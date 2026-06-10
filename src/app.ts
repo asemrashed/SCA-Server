@@ -1,6 +1,6 @@
 import express from 'express'
 import cors from 'cors'
-import helmet from 'helmet'
+import { default as helmet } from 'helmet'
 import cookieParser from 'cookie-parser'
 import { env } from './config/env.js'
 import { errorHandler } from './middleware/error.js'
