@@ -1,7 +1,11 @@
+import { createRequire } from 'node:module'
+import type { RequestHandler } from 'express'
 import express from 'express'
 import cors from 'cors'
-import { default as helmet } from 'helmet'
 import cookieParser from 'cookie-parser'
+
+const require = createRequire(import.meta.url)
+const helmet = require('helmet') as () => RequestHandler
 import { env } from './config/env.js'
 import { errorHandler } from './middleware/error.js'
 import { authRouter } from './modules/auth/auth.routes.js'
