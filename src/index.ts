@@ -1,8 +1,6 @@
 import 'dotenv/config'
-import { createApp } from './app.js'
+import app from './app.js'
 import { env } from './config/env.js'
-
-const app = createApp()
 
 app.listen(env.PORT, () => {
   console.info(`SCA API listening on http://localhost:${env.PORT}/api`)

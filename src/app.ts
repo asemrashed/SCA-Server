@@ -37,3 +37,6 @@ export function createApp() {
 
   return app
 }
+
+/** Vercel serverless entry — must default-export the Express app (no app.listen here). */
+export default createApp()
