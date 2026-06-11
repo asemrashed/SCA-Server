@@ -14,6 +14,28 @@ enum Role {
   ADMIN
 }
 
+enum BatchStatus {
+  DRAFT
+  UPCOMING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum LessonType {
+  VIDEO
+  LIVE
+  TEXT
+  DOCUMENT
+}
+
+enum EnrollmentStatus {
+  PENDING
+  ACTIVE
+  CANCELLED
+  COMPLETED
+}
+
 model User {
   id            String   @id @default(cuid())
   phone         String   @unique
@@ -28,7 +50,12 @@ model User {
   updatedAt     DateTime @updatedAt
   deletedAt     DateTime?
 
-  refreshTokens RefreshToken[]
+  refreshTokens  RefreshToken[]
+  taughtBatches  BatchInstructor[]
+  enrollments    Enrollment[]
+
+  @@index([role])
+  @@index([email])
 }
 
 model RefreshToken {
@@ -41,4 +68,142 @@ model RefreshToken {
   createdAt DateTime  @default(now())
 
   @@index([userId])
+}
+
+model Course {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String?
+  thumbnail   String?
+  category    String?
+  priceMinor  Int      @default(0)
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  modules     Module[]
+  enrollments Enrollment[]
+
+  @@index([category])
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  title     String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  modules Module[]
+
+  @@index([batchId])
+}
+
+model Module {
+  id        String   @id @default(cuid())
+  courseId  String?
+  course    Course?  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  title     String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lessons Lesson[]
+
+  @@index([courseId])
+  @@index([subjectId])
+}
+
+model Lesson {
+  id        String     @id @default(cuid())
+  moduleId  String
+  module    Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title     String
+  type      LessonType @default(VIDEO)
+  videoUrl  String?
+  content   String?
+  durationS Int?
+  order     Int        @default(0)
+  isPreview Boolean    @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  lessonProgress LessonProgress[]
+
+  @@index([moduleId])
+}
+
+model Batch {
+  id                   String      @id @default(cuid())
+  title                String
+  slug                 String      @unique
+  status               BatchStatus @default(DRAFT)
+  priceMinor           Int         @default(0)
+  capacity             Int?
+  registrationDeadline DateTime?
+  startDate            DateTime?
+  endDate              DateTime?
+  thumbnail            String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  deletedAt            DateTime?
+
+  subjects    Subject[]
+  instructors BatchInstructor[]
+  enrollments Enrollment[]
+
+  @@index([status])
+}
+
+model BatchInstructor {
+  batchId      String
+  batch        Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  instructorId String
+  instructor   User     @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  assignedAt   DateTime @default(now())
+
+  @@id([batchId, instructorId])
+  @@index([instructorId])
+}
+
+model Enrollment {
+  id          String           @id @default(cuid())
+  studentId   String
+  student     User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  batchId     String?
+  batch       Batch?           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  courseId    String?
+  course      Course?          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  status      EnrollmentStatus @default(PENDING)
+  progressPct Int              @default(0)
+  enrolledAt  DateTime         @default(now())
+  completedAt DateTime?
+
+  lessonProgress LessonProgress[]
+
+  @@unique([studentId, batchId])
+  @@unique([studentId, courseId])
+  @@index([batchId])
+  @@index([courseId])
+  @@index([studentId])
+}
+
+model LessonProgress {
+  id           String     @id @default(cuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lessonId     String
+  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  completed    Boolean    @default(false)
+  completedAt  DateTime?
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([enrollmentId, lessonId])
+  @@index([lessonId])
 }

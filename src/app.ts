@@ -9,6 +9,12 @@ const helmet = require('helmet') as () => RequestHandler
 import { env } from './config/env.js'
 import { errorHandler } from './middleware/error.js'
 import { authRouter } from './modules/auth/auth.routes.js'
+import { batchRouter } from './modules/batch/batch.routes.js'
+import { courseRouter } from './modules/course/course.routes.js'
+import {
+  enrollmentRouter,
+  meEnrollmentRouter,
+} from './modules/enrollment/enrollment.routes.js'
 
 export function createApp() {
   const app = express()
@@ -30,6 +36,10 @@ export function createApp() {
   })
 
   api.use('/auth', authRouter)
+  api.use('/courses', courseRouter)
+  api.use('/batches', batchRouter)
+  api.use('/enrollments', enrollmentRouter)
+  api.use('/me', meEnrollmentRouter)
 
   app.use('/api', api)
 

@@ -19,3 +19,30 @@ export enum PhoneVerificationPurpose {
   SIGNUP = 'SIGNUP',
   PASSWORD_RESET = 'PASSWORD_RESET',
 }
+
+export enum BatchStatus {
+  DRAFT = 'DRAFT',
+  UPCOMING = 'UPCOMING',
+  ACTIVE = 'ACTIVE',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum LessonType {
+  VIDEO = 'VIDEO',
+  LIVE = 'LIVE',
+  TEXT = 'TEXT',
+  DOCUMENT = 'DOCUMENT',
+}
+
+export enum EnrollmentStatus {
+  PENDING = 'PENDING',
+  ACTIVE = 'ACTIVE',
+  CANCELLED = 'CANCELLED',
+  COMPLETED = 'COMPLETED',
+}
+
+export enum EnrollmentKind {
+  BATCH = 'BATCH',
+  COURSE = 'COURSE',
+}
