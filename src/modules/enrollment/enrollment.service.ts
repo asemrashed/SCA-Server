@@ -241,3 +241,21 @@ export async function markLessonComplete(
   const updated = await prisma.enrollment.findUnique({ where: { id: enrollment.id } })
   return { progressPct: updated?.progressPct ?? 0 }
 }
+
+type DbClient = typeof prisma | Prisma.TransactionClient
+
+/** Called only from verified payment webhook — activates a pending enrollment. */
+export async function activateEnrollmentAfterPayment(
+  enrollmentId: string,
+  db: DbClient = prisma,
+): Promise<void> {
+  const enrollment = await db.enrollment.findUnique({ where: { id: enrollmentId } })
+  if (!enrollment || enrollment.status !== EnrollmentStatus.PENDING) {
+    return
+  }
+
+  await db.enrollment.update({
+    where: { id: enrollmentId },
+    data: { status: EnrollmentStatus.ACTIVE },
+  })
+}

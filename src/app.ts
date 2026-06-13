@@ -15,6 +15,32 @@ import {
   enrollmentRouter,
   meEnrollmentRouter,
 } from './modules/enrollment/enrollment.routes.js'
+import { resourceRouter } from './modules/resource/resource.routes.js'
+import {
+  meLiveclassRouter,
+  recordingsRouter,
+  sessionsRouter,
+} from './modules/liveclass/liveclass.routes.js'
+import { uploadRouter } from './modules/upload/upload.routes.js'
+import {
+  assignmentRouter,
+  attemptRouter,
+  batchAssignmentRouter,
+  batchExamRouter,
+  courseAssignmentRouter,
+  courseExamRouter,
+  examRouter,
+  questionRouter,
+  submissionRouter,
+} from './modules/assessment/assessment.routes.js'
+import {
+  mePaymentRouter,
+  paymentRouter,
+} from './modules/payment/payment.routes.js'
+import {
+  certificateRouter,
+  meCertificateRouter,
+} from './modules/certificate/certificate.routes.js'
 
 export function createApp() {
   const app = express()
@@ -36,10 +62,35 @@ export function createApp() {
   })
 
   api.use('/auth', authRouter)
-  api.use('/courses', courseRouter)
-  api.use('/batches', batchRouter)
+
+  const batchesApi = express.Router()
+  batchesApi.use('/:batchId/exams', batchExamRouter)
+  batchesApi.use('/:batchId/assignments', batchAssignmentRouter)
+  batchesApi.use('/', batchRouter)
+  api.use('/batches', batchesApi)
+
+  const coursesApi = express.Router()
+  coursesApi.use('/:courseId/exams', courseExamRouter)
+  coursesApi.use('/:courseId/assignments', courseAssignmentRouter)
+  coursesApi.use('/', courseRouter)
+  api.use('/courses', coursesApi)
+
+  api.use('/questions', questionRouter)
+  api.use('/exams', examRouter)
+  api.use('/attempts', attemptRouter)
+  api.use('/assignments', assignmentRouter)
+  api.use('/submissions', submissionRouter)
+  api.use('/sessions', sessionsRouter)
+  api.use('/recordings', recordingsRouter)
   api.use('/enrollments', enrollmentRouter)
   api.use('/me', meEnrollmentRouter)
+  api.use('/resources', resourceRouter)
+  api.use('/uploads', uploadRouter)
+  api.use('/payments', paymentRouter)
+  api.use('/me', mePaymentRouter)
+  api.use('/me', meLiveclassRouter)
+  api.use('/me', meCertificateRouter)
+  api.use('/certificates', certificateRouter)
 
   app.use('/api', api)
 

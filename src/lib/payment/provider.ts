@@ -1,16 +1,20 @@
 export interface PaymentInitInput {
-  orderId: string
+  tranId: string
   amountMinor: number
   customerPhone: string
   customerName: string
+  customerEmail?: string | null
+  productName: string
   successUrl: string
   failUrl: string
   cancelUrl: string
+  ipnUrl: string
 }
 
 export interface PaymentInitResult {
   redirectUrl: string
   providerRef: string
+  sessionKey?: string
 }
 
 export interface PaymentVerifyInput {
@@ -20,28 +24,13 @@ export interface PaymentVerifyInput {
 
 export interface PaymentVerifyResult {
   success: boolean
+  cancelled?: boolean
   transactionId?: string
   amountMinor?: number
+  providerRef?: string
 }
 
 export interface PaymentProvider {
   initiate(input: PaymentInitInput): Promise<PaymentInitResult>
   verifyWebhook(input: PaymentVerifyInput): Promise<PaymentVerifyResult>
 }
-
-class StubPaymentProvider implements PaymentProvider {
-  async initiate(input: PaymentInitInput): Promise<PaymentInitResult> {
-    console.info('[payment:stub] initiate', input.orderId, input.amountMinor)
-    return {
-      redirectUrl: input.successUrl,
-      providerRef: `stub-${input.orderId}`,
-    }
-  }
-
-  async verifyWebhook(input: PaymentVerifyInput): Promise<PaymentVerifyResult> {
-    console.info('[payment:stub] verify', input.providerRef)
-    return { success: false }
-  }
-}
-
-export const paymentProvider: PaymentProvider = new StubPaymentProvider()

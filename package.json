@@ -18,12 +18,15 @@
   "dependencies": {
     "@prisma/client": "^6.9.0",
     "argon2": "^0.44.0",
+    "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "pdf-lib": "^1.17.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -31,6 +34,7 @@
     "@types/cors": "^2.8.18",
     "@types/express": "^5.0.2",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.1.0",
     "@types/node": "^22",
     "prisma": "^6.9.0",
     "tsx": "^4.19.4",

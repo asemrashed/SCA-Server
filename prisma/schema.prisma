@@ -36,6 +36,50 @@ enum EnrollmentStatus {
   COMPLETED
 }
 
+enum SessionStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum QuestionType {
+  MCQ
+  TRUE_FALSE
+  SHORT_ANSWER
+  WRITTEN
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+}
+
+enum PaymentPurpose {
+  ORDER
+  ENROLLMENT
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
 model User {
   id            String   @id @default(cuid())
   phone         String   @unique
@@ -53,6 +97,11 @@ model User {
   refreshTokens  RefreshToken[]
   taughtBatches  BatchInstructor[]
   enrollments    Enrollment[]
+  attendance     Attendance[]
+  examAttempts   ExamAttempt[]
+  submissions    Submission[]
+  payments       Payment[]
+  certificates   Certificate[]
 
   @@index([role])
   @@index([email])
@@ -83,8 +132,13 @@ model Course {
   updatedAt   DateTime @updatedAt
   deletedAt   DateTime?
 
-  modules     Module[]
-  enrollments Enrollment[]
+  modules      Module[]
+  enrollments  Enrollment[]
+  liveSessions LiveSession[]
+  recordings   Recording[]
+  exams        Exam[]
+  assignments  Assignment[]
+  resources    Resource[]
 
   @@index([category])
 }
@@ -115,6 +169,9 @@ model Module {
   updatedAt DateTime @updatedAt
 
   lessons Lesson[]
+  exams       Exam[]
+  assignments Assignment[]
+  resources   Resource[]
 
   @@index([courseId])
   @@index([subjectId])
@@ -135,6 +192,8 @@ model Lesson {
   updatedAt DateTime   @updatedAt
 
   lessonProgress LessonProgress[]
+  recordings     Recording[]
+  resources      Resource[]
 
   @@index([moduleId])
 }
@@ -154,9 +213,14 @@ model Batch {
   updatedAt            DateTime    @updatedAt
   deletedAt            DateTime?
 
-  subjects    Subject[]
-  instructors BatchInstructor[]
-  enrollments Enrollment[]
+  subjects     Subject[]
+  instructors  BatchInstructor[]
+  enrollments  Enrollment[]
+  liveSessions LiveSession[]
+  recordings   Recording[]
+  exams        Exam[]
+  assignments  Assignment[]
+  resources    Resource[]
 
   @@index([status])
 }
@@ -186,6 +250,8 @@ model Enrollment {
   completedAt DateTime?
 
   lessonProgress LessonProgress[]
+  payments       Payment[]
+  certificate    Certificate?
 
   @@unique([studentId, batchId])
   @@unique([studentId, courseId])
@@ -206,4 +272,227 @@ model LessonProgress {
 
   @@unique([enrollmentId, lessonId])
   @@index([lessonId])
+}
+
+model Resource {
+  id        String   @id @default(cuid())
+  title     String
+  fileUrl   String
+  fileType  String?
+  batchId   String?
+  batch     Batch?   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  courseId  String?
+  course    Course?  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  moduleId  String?
+  module    Module?  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  lessonId  String?
+  lesson    Lesson?  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([batchId])
+  @@index([courseId])
+  @@index([moduleId])
+  @@index([lessonId])
+}
+
+model LiveSession {
+  id          String        @id @default(cuid())
+  batchId     String?
+  batch       Batch?        @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  courseId    String?
+  course      Course?       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  status      SessionStatus @default(SCHEDULED)
+  joinUrl     String?
+  scheduledAt DateTime
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  attendance Attendance[]
+  recording  Recording?
+
+  @@index([batchId])
+  @@index([courseId])
+  @@index([scheduledAt])
+}
+
+model Recording {
+  id        String   @id @default(cuid())
+  batchId   String?
+  batch     Batch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  courseId  String?
+  course    Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  lessonId  String?
+  lesson    Lesson?  @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  sessionId String?  @unique
+  session   LiveSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  title     String
+  videoUrl  String
+  durationS Int?
+  createdAt DateTime @default(now())
+
+  @@index([batchId])
+  @@index([courseId])
+}
+
+model Attendance {
+  id        String           @id @default(cuid())
+  sessionId String
+  session   LiveSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId String
+  student   User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status    AttendanceStatus @default(ABSENT)
+  markedAt  DateTime         @default(now())
+
+  @@unique([sessionId, studentId])
+  @@index([studentId])
+}
+
+model Question {
+  id        String       @id @default(cuid())
+  stem      String
+  type      QuestionType
+  options   Json?
+  correct   Json
+  category  String?
+  marks     Int          @default(1)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  examQuestions ExamQuestion[]
+
+  @@index([category])
+  @@index([type])
+}
+
+model Exam {
+  id          String     @id @default(cuid())
+  batchId     String?
+  batch       Batch?     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  courseId    String?
+  course      Course?    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  moduleId    String?
+  module      Module?    @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title       String
+  status      ExamStatus @default(DRAFT)
+  durationMin Int?
+  totalMarks  Int        @default(0)
+  opensAt     DateTime?
+  closesAt    DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  questions ExamQuestion[]
+  attempts  ExamAttempt[]
+
+  @@index([batchId])
+  @@index([courseId])
+  @@index([moduleId])
+}
+
+model ExamQuestion {
+  examId     String
+  exam       Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  order      Int      @default(0)
+  marks      Int?
+
+  @@id([examId, questionId])
+  @@index([questionId])
+}
+
+model ExamAttempt {
+  id          String        @id @default(cuid())
+  examId      String
+  exam        Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status      AttemptStatus @default(IN_PROGRESS)
+  answers     Json          @default("{}")
+  scoreMarks  Int?
+  scorePct    Int?
+  startedAt   DateTime      @default(now())
+  submittedAt DateTime?
+  expiresAt   DateTime?
+
+  @@unique([examId, studentId])
+  @@index([studentId])
+}
+
+model Assignment {
+  id          String    @id @default(cuid())
+  batchId     String?
+  batch       Batch?    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  courseId    String?
+  course      Course?   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  moduleId    String?
+  module      Module?   @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  title       String
+  description String?
+  totalMarks  Int       @default(100)
+  dueAt       DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  submissions Submission[]
+
+  @@index([batchId])
+  @@index([courseId])
+  @@index([moduleId])
+}
+
+model Submission {
+  id           String     @id @default(cuid())
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fileUrl      String?
+  text         String?
+  scoreMarks   Int?
+  feedback     String?
+  submittedAt  DateTime   @default(now())
+  gradedAt     DateTime?
+
+  @@unique([assignmentId, studentId])
+  @@index([studentId])
+}
+
+model Payment {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose       PaymentPurpose
+  enrollmentId  String?
+  enrollment    Enrollment?    @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  amountMinor   Int
+  discountMinor Int            @default(0)
+  status        PaymentStatus  @default(PENDING)
+  provider      String         @default("sslcommerz")
+  providerRef   String         @unique
+  transactionId String?
+  couponCode    String?
+  paidAt        DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([enrollmentId])
+  @@index([status])
+}
+
+model Certificate {
+  id           String     @id @default(cuid())
+  enrollmentId String     @unique
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  serial       String     @unique
+  pdfUrl       String?
+  issuedAt     DateTime   @default(now())
+
+  @@index([studentId])
 }

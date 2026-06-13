@@ -46,3 +46,47 @@ export enum EnrollmentKind {
   BATCH = 'BATCH',
   COURSE = 'COURSE',
 }
+
+export enum QuestionType {
+  MCQ = 'MCQ',
+  TRUE_FALSE = 'TRUE_FALSE',
+  SHORT_ANSWER = 'SHORT_ANSWER',
+  WRITTEN = 'WRITTEN',
+}
+
+export enum ExamStatus {
+  DRAFT = 'DRAFT',
+  PUBLISHED = 'PUBLISHED',
+  ARCHIVED = 'ARCHIVED',
+}
+
+export enum AttemptStatus {
+  IN_PROGRESS = 'IN_PROGRESS',
+  SUBMITTED = 'SUBMITTED',
+}
+
+export enum SessionStatus {
+  SCHEDULED = 'SCHEDULED',
+  LIVE = 'LIVE',
+  ENDED = 'ENDED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum AttendanceStatus {
+  PRESENT = 'PRESENT',
+  ABSENT = 'ABSENT',
+  LATE = 'LATE',
+  EXCUSED = 'EXCUSED',
+}
+
+export enum PaymentPurpose {
+  ORDER = 'ORDER',
+  ENROLLMENT = 'ENROLLMENT',
+}
+
+export enum PaymentStatus {
+  PENDING = 'PENDING',
+  PAID = 'PAID',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+}

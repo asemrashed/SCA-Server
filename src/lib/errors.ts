@@ -38,3 +38,7 @@ export function conflict(message: string): AppError {
 export function internal(message = 'Internal server error'): AppError {
   return new AppError(ErrorCode.INTERNAL, message, 500)
 }
+
+export function paymentFailed(message: string): AppError {
+  return new AppError(ErrorCode.PAYMENT_FAILED, message, 402)
+}

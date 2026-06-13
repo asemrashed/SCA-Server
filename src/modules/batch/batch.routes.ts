@@ -9,10 +9,12 @@ import {
   updateBatchSchema,
 } from '../../shared/schemas/batch.js'
 import * as controller from './batch.controller.js'
+import { attachBatchLiveRoutes } from '../liveclass/liveclass.routes.js'
 
 export const batchRouter = Router()
 
 batchRouter.get('/', validate(batchListQuerySchema, 'query'), controller.list)
+attachBatchLiveRoutes(batchRouter)
 batchRouter.get('/:idOrSlug', controller.getByIdOrSlug)
 batchRouter.post(
   '/',

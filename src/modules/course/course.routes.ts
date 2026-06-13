@@ -9,10 +9,12 @@ import {
   updateCourseSchema,
 } from '../../shared/schemas/course.js'
 import * as controller from './course.controller.js'
+import { attachCourseLiveRoutes } from '../liveclass/liveclass.routes.js'
 
 export const courseRouter = Router()
 
 courseRouter.get('/', validate(courseListQuerySchema, 'query'), controller.list)
+attachCourseLiveRoutes(courseRouter)
 courseRouter.get('/:idOrSlug', controller.getByIdOrSlug)
 courseRouter.post(
   '/',
