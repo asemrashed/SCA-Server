@@ -3,16 +3,19 @@ import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { conflict, forbidden, notFound, validationError } from '../../lib/errors.js'
 import { BatchStatus, EnrollmentStatus } from '../../shared/enums.js'
-import { createEnrollmentSchema } from '../../shared/schemas/enrollment.js'
+import { createEnrollmentSchema, reviewEnrollmentSchema } from '../../shared/schemas/enrollment.js'
 import {
   toEnrollmentDetail,
   toEnrollmentListItem,
+  toAdminEnrollmentRequest,
+  type AdminEnrollmentRequestDto,
   type EnrollmentDetailDto,
   type EnrollmentListItemDto,
   type EnrollmentWithRelations,
 } from './enrollment.mapper.js'
 
 type CreateEnrollmentInput = z.infer<typeof createEnrollmentSchema>
+type ReviewEnrollmentInput = z.infer<typeof reviewEnrollmentSchema>
 
 const lessonOrder = { orderBy: { order: 'asc' as const } }
 
@@ -120,6 +123,33 @@ export async function getMyEnrollment(
   return toEnrollmentDetail(row)
 }
 
+async function handleExistingEnrollment(
+  existing: { id: string; status: string },
+  include: typeof enrollmentInclude,
+): Promise<EnrollmentListItemDto | null> {
+  if (existing.status === EnrollmentStatus.CANCELLED) {
+    const enrollment = await prisma.enrollment.update({
+      where: { id: existing.id },
+      data: {
+        status: EnrollmentStatus.PENDING,
+        rollNumber: null,
+        enrolledAt: new Date(),
+      },
+      include,
+    })
+    return toEnrollmentListItem(assertEnrollmentRow(enrollment))
+  }
+  if (existing.status === EnrollmentStatus.PENDING) {
+    const enrollment = await prisma.enrollment.findUnique({
+      where: { id: existing.id },
+      include,
+    })
+    if (!enrollment) return null
+    return toEnrollmentListItem(assertEnrollmentRow(enrollment))
+  }
+  return null
+}
+
 export async function createEnrollment(
   studentId: string,
   input: CreateEnrollmentInput,
@@ -143,14 +173,13 @@ export async function createEnrollment(
       where: { studentId, batchId: input.batchId },
     })
     if (existing) {
+      const resumed = await handleExistingEnrollment(existing, enrollmentInclude)
+      if (resumed) return resumed
       throw conflict('Already enrolled in this batch')
     }
 
-    const status =
-      batch.priceMinor === 0 ? EnrollmentStatus.ACTIVE : EnrollmentStatus.PENDING
-
     const enrollment = await prisma.enrollment.create({
-      data: { studentId, batchId: input.batchId, status },
+      data: { studentId, batchId: input.batchId, status: EnrollmentStatus.PENDING },
       include: enrollmentInclude,
     })
     return toEnrollmentListItem(assertEnrollmentRow(enrollment))
@@ -167,14 +196,13 @@ export async function createEnrollment(
     where: { studentId, courseId: input.courseId },
   })
   if (existing) {
+    const resumed = await handleExistingEnrollment(existing, enrollmentInclude)
+    if (resumed) return resumed
     throw conflict('Already enrolled in this course')
   }
 
-  const status =
-    course.priceMinor === 0 ? EnrollmentStatus.ACTIVE : EnrollmentStatus.PENDING
-
   const enrollment = await prisma.enrollment.create({
-    data: { studentId, courseId: input.courseId!, status },
+    data: { studentId, courseId: input.courseId!, status: EnrollmentStatus.PENDING },
     include: enrollmentInclude,
   })
   return toEnrollmentListItem(assertEnrollmentRow(enrollment))
@@ -244,7 +272,7 @@ export async function markLessonComplete(
 
 type DbClient = typeof prisma | Prisma.TransactionClient
 
-/** Called only from verified payment webhook — activates a pending enrollment. */
+/** @deprecated Enrollment activation is manual via admin approval. Kept for legacy payment webhook only. */
 export async function activateEnrollmentAfterPayment(
   enrollmentId: string,
   db: DbClient = prisma,
@@ -258,4 +286,83 @@ export async function activateEnrollmentAfterPayment(
     where: { id: enrollmentId },
     data: { status: EnrollmentStatus.ACTIVE },
   })
+}
+
+const activeEnrollmentStatuses = [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED]
+
+const adminEnrollmentInclude = {
+  student: { select: { id: true, name: true, phone: true } },
+  batch: {
+    select: {
+      id: true,
+      title: true,
+      capacity: true,
+      _count: {
+        select: {
+          enrollments: {
+            where: { status: { in: activeEnrollmentStatuses } },
+          },
+        },
+      },
+    },
+  },
+  course: {
+    select: {
+      id: true,
+      title: true,
+      _count: {
+        select: {
+          enrollments: {
+            where: { status: { in: activeEnrollmentStatuses } },
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.EnrollmentInclude
+
+export async function listAdminEnrollmentRequests(
+  status: EnrollmentStatus = EnrollmentStatus.PENDING,
+): Promise<AdminEnrollmentRequestDto[]> {
+  const rows = await prisma.enrollment.findMany({
+    where: { status },
+    include: adminEnrollmentInclude,
+    orderBy: { enrolledAt: 'desc' },
+  })
+  return rows.map((row) => toAdminEnrollmentRequest(row))
+}
+
+export async function reviewEnrollmentRequest(
+  enrollmentId: string,
+  input: ReviewEnrollmentInput,
+): Promise<AdminEnrollmentRequestDto> {
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id: enrollmentId },
+    include: adminEnrollmentInclude,
+  })
+  if (!enrollment) {
+    throw notFound('Enrollment not found')
+  }
+  if (enrollment.status !== EnrollmentStatus.PENDING) {
+    throw validationError('Only pending enrollment requests can be reviewed')
+  }
+
+  if (input.action === 'reject') {
+    const updated = await prisma.enrollment.update({
+      where: { id: enrollmentId },
+      data: { status: EnrollmentStatus.CANCELLED },
+      include: adminEnrollmentInclude,
+    })
+    return toAdminEnrollmentRequest(updated)
+  }
+
+  const updated = await prisma.enrollment.update({
+    where: { id: enrollmentId },
+    data: {
+      status: EnrollmentStatus.ACTIVE,
+      rollNumber: input.rollNumber!,
+    },
+    include: adminEnrollmentInclude,
+  })
+  return toAdminEnrollmentRequest(updated)
 }

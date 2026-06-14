@@ -3,6 +3,7 @@ import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { conflict, notFound, validationError } from '../../lib/errors.js'
 import { BatchStatus, Role } from '../../shared/enums.js'
+import { isAdminStaff } from '../../shared/roles.js'
 import {
   batchListQuerySchema,
   createBatchSchema,
@@ -58,7 +59,7 @@ function parseSort(sort?: string): Prisma.BatchOrderByWithRelationInput {
 }
 
 function canViewProtectedContent(role?: Role): boolean {
-  return role === Role.ADMIN
+  return role !== undefined && isAdminStaff(role)
 }
 
 async function validateInstructorIds(instructorIds: string[]): Promise<void> {
@@ -69,7 +70,7 @@ async function validateInstructorIds(instructorIds: string[]): Promise<void> {
       id: { in: instructorIds },
       deletedAt: null,
       isActive: true,
-      role: { in: [Role.INSTRUCTOR, Role.ADMIN] },
+      role: { in: [Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN] },
     },
     select: { id: true },
   })

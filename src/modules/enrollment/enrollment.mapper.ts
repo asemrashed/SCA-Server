@@ -49,6 +49,7 @@ export interface EnrollmentListItemDto {
     thumbnail: string | null
   } | null
   status: EnrollmentStatus
+  rollNumber: string | null
   progressPct: number
   totalLessons: number
   completedLessons: number
@@ -83,11 +84,25 @@ export interface EnrollmentDetailDto {
   id: string
   kind: EnrollmentKind
   status: EnrollmentStatus
+  rollNumber: string | null
   progressPct: number
   batch: { id: string; title: string } | null
   course: { id: string; title: string } | null
   subjects?: EnrollmentSubjectDto[]
   modules?: EnrollmentModuleDto[]
+}
+
+export interface AdminEnrollmentRequestDto {
+  id: string
+  kind: EnrollmentKind
+  status: EnrollmentStatus
+  rollNumber: string | null
+  enrolledAt: string
+  student: { id: string; name: string; phone: string }
+  batch: { id: string; title: string } | null
+  course: { id: string; title: string } | null
+  totalSeats: number | null
+  totalEnrollments: number
 }
 
 function progressMap(rows: ProgressRow[]): Map<string, boolean> {
@@ -132,6 +147,7 @@ export function toEnrollmentListItem(row: EnrollmentWithRelations): EnrollmentLi
       },
       course: null,
       status: row.status as EnrollmentStatus,
+      rollNumber: row.rollNumber,
       progressPct: row.progressPct,
       totalLessons: lessons.length,
       completedLessons: done,
@@ -151,6 +167,7 @@ export function toEnrollmentListItem(row: EnrollmentWithRelations): EnrollmentLi
       thumbnail: row.course!.thumbnail,
     },
     status: row.status as EnrollmentStatus,
+    rollNumber: row.rollNumber,
     progressPct: row.progressPct,
     totalLessons: lessons.length,
     completedLessons: done,
@@ -178,6 +195,7 @@ export function toEnrollmentDetail(row: EnrollmentWithRelations): EnrollmentDeta
       id: row.id,
       kind: EnrollmentKind.BATCH,
       status: row.status as EnrollmentStatus,
+      rollNumber: row.rollNumber,
       progressPct: row.progressPct,
       batch: { id: row.batch.id, title: row.batch.title },
       course: null,
@@ -199,6 +217,7 @@ export function toEnrollmentDetail(row: EnrollmentWithRelations): EnrollmentDeta
     id: row.id,
     kind: EnrollmentKind.COURSE,
     status: row.status as EnrollmentStatus,
+    rollNumber: row.rollNumber,
     progressPct: row.progressPct,
     batch: null,
     course: { id: row.course!.id, title: row.course!.title },
@@ -208,5 +227,42 @@ export function toEnrollmentDetail(row: EnrollmentWithRelations): EnrollmentDeta
       order: mod.order,
       lessons: mod.lessons.map((l) => toLessonDto(l, completed)),
     })),
+  }
+}
+
+type AdminEnrollmentRow = Enrollment & {
+  student: Pick<User, 'id' | 'name' | 'phone'>
+  batch:
+    | (Pick<Batch, 'id' | 'title' | 'capacity'> & {
+        _count: { enrollments: number }
+      })
+    | null
+  course:
+    | (Pick<Course, 'id' | 'title'> & {
+        _count: { enrollments: number }
+      })
+    | null
+}
+
+export function toAdminEnrollmentRequest(row: AdminEnrollmentRow): AdminEnrollmentRequestDto {
+  const kind = row.batchId ? EnrollmentKind.BATCH : EnrollmentKind.COURSE
+  const totalEnrollments = row.batch?._count.enrollments ?? row.course?._count.enrollments ?? 0
+  const totalSeats = row.batch?.capacity ?? null
+
+  return {
+    id: row.id,
+    kind,
+    status: row.status as EnrollmentStatus,
+    rollNumber: row.rollNumber,
+    enrolledAt: row.enrolledAt.toISOString(),
+    student: {
+      id: row.student.id,
+      name: row.student.name,
+      phone: row.student.phone,
+    },
+    batch: row.batch ? { id: row.batch.id, title: row.batch.title } : null,
+    course: row.course ? { id: row.course.id, title: row.course.title } : null,
+    totalSeats,
+    totalEnrollments,
   }
 }

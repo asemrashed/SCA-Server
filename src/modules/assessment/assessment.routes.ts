@@ -3,6 +3,7 @@ import { authenticate } from '../../middleware/auth.js'
 import { requireRole } from '../../middleware/rbac.js'
 import { validate } from '../../middleware/validate.js'
 import { Role } from '../../shared/enums.js'
+import { ADMIN_ROLES } from '../../shared/roles.js'
 import {
   createAssignmentSchema,
   createExamSchema,
@@ -24,7 +25,7 @@ export const courseExamRouter = Router({ mergeParams: true })
 export const batchAssignmentRouter = Router({ mergeParams: true })
 export const courseAssignmentRouter = Router({ mergeParams: true })
 
-const staffRoles = [Role.ADMIN, Role.INSTRUCTOR] as const
+const staffRoles = ADMIN_ROLES
 
 questionRouter.get(
   '/',
@@ -87,7 +88,7 @@ assignmentRouter.post(
 submissionRouter.patch(
   '/:id/grade',
   authenticate,
-  requireRole(Role.INSTRUCTOR, Role.ADMIN),
+  requireRole(...ADMIN_ROLES),
   validate(gradeSubmissionSchema),
   controller.gradeSubmission,
 )

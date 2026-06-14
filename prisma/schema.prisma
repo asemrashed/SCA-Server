@@ -12,6 +12,7 @@ enum Role {
   STUDENT
   INSTRUCTOR
   ADMIN
+  SUPER_ADMIN
 }
 
 enum BatchStatus {
@@ -80,6 +81,19 @@ enum PaymentStatus {
   CANCELLED
 }
 
+enum ProductType {
+  BOOK
+  NOTES
+  QUESTION_BANK
+  OTHER
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
 model User {
   id            String   @id @default(cuid())
   phone         String   @unique
@@ -102,6 +116,7 @@ model User {
   submissions    Submission[]
   payments       Payment[]
   certificates   Certificate[]
+  orders         Order[]
 
   @@index([role])
   @@index([email])
@@ -245,6 +260,7 @@ model Enrollment {
   courseId    String?
   course      Course?          @relation(fields: [courseId], references: [id], onDelete: Cascade)
   status      EnrollmentStatus @default(PENDING)
+  rollNumber  String?
   progressPct Int              @default(0)
   enrolledAt  DateTime         @default(now())
   completedAt DateTime?
@@ -459,6 +475,57 @@ model Submission {
 
   @@unique([assignmentId, studentId])
   @@index([studentId])
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  title       String
+  slug        String      @unique
+  description String?
+  thumbnail   String?
+  type        ProductType @default(BOOK)
+  priceMinor  Int         @default(0)
+  stock       Int?
+  isPublished Boolean     @default(false)
+  digitalUrl  String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  orderItems OrderItem[]
+
+  @@index([type])
+  @@index([isPublished])
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      OrderStatus @default(PENDING)
+  totalMinor  Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  confirmedAt DateTime?
+
+  items OrderItem[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model OrderItem {
+  id             String  @id @default(cuid())
+  orderId        String
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity       Int     @default(1)
+  unitPriceMinor Int
+  title          String
+
+  @@index([orderId])
+  @@index([productId])
 }
 
 model Payment {

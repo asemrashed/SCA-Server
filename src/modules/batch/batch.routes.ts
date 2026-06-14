@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { authenticate } from '../../middleware/auth.js'
 import { requireRole } from '../../middleware/rbac.js'
 import { validate } from '../../middleware/validate.js'
-import { Role } from '../../shared/enums.js'
+import { SUPER_ADMIN_ROLES, ADMIN_ROLES } from '../../shared/roles.js'
 import {
   batchListQuerySchema,
   createBatchSchema,
@@ -19,20 +19,20 @@ batchRouter.get('/:idOrSlug', controller.getByIdOrSlug)
 batchRouter.post(
   '/',
   authenticate,
-  requireRole(Role.ADMIN),
+  requireRole(...SUPER_ADMIN_ROLES),
   validate(createBatchSchema),
   controller.create,
 )
 batchRouter.patch(
   '/:id',
   authenticate,
-  requireRole(Role.ADMIN),
+  requireRole(...ADMIN_ROLES),
   validate(updateBatchSchema),
   controller.update,
 )
 batchRouter.delete(
   '/:id',
   authenticate,
-  requireRole(Role.ADMIN),
+  requireRole(...SUPER_ADMIN_ROLES),
   controller.remove,
 )

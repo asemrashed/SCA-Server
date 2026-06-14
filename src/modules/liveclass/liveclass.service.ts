@@ -7,6 +7,7 @@ import {
   Role,
   SessionStatus,
 } from '../../shared/enums.js'
+import { isAdminStaff, isStaff } from '../../shared/roles.js'
 import type {
   createRecordingSchema,
   createSessionSchema,
@@ -63,7 +64,7 @@ async function assertBatchSessionAccess(
   role: Role,
   batchId: string,
 ): Promise<void> {
-  if (role === Role.ADMIN) return
+  if (isAdminStaff(role)) return
   if (role === Role.INSTRUCTOR && (await isBatchInstructor(batchId, userId))) return
   if (role === Role.STUDENT && (await isEnrolledInBatch(userId, batchId))) return
   throw forbidden('Not allowed to access this batch')
@@ -74,7 +75,7 @@ async function assertCourseSessionAccess(
   role: Role,
   courseId: string,
 ): Promise<void> {
-  if (role === Role.ADMIN) return
+  if (isAdminStaff(role)) return
   if (role === Role.INSTRUCTOR) return
   if (role === Role.STUDENT && (await isEnrolledInCourse(userId, courseId))) return
   throw forbidden('Not allowed to access this course')
@@ -93,13 +94,13 @@ async function assertCourseEnrolled(studentId: string, courseId: string): Promis
 }
 
 async function assertCanManageBatch(userId: string, role: Role, batchId: string): Promise<void> {
-  if (role === Role.ADMIN) return
+  if (isAdminStaff(role)) return
   if (role === Role.INSTRUCTOR && (await isBatchInstructor(batchId, userId))) return
   throw forbidden('Not allowed to manage this batch')
 }
 
 async function assertCanManageCourse(userId: string, role: Role): Promise<void> {
-  if (role === Role.ADMIN || role === Role.INSTRUCTOR) return
+  if (isStaff(role)) return
   throw forbidden('Not allowed to manage course sessions')
 }
 

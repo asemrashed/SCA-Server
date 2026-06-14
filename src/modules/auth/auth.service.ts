@@ -3,8 +3,9 @@ import type { User as PrismaUser } from '@prisma/client'
 import { prisma } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { addDuration } from '../../lib/duration.js'
-import { conflict, unauthorized, notFound } from '../../lib/errors.js'
+import { conflict, forbidden, unauthorized, notFound } from '../../lib/errors.js'
 import type { Role } from '../../shared/enums.js'
+import { isLoginAllowed } from '../../shared/roles.js'
 import { signAccessToken } from '../../lib/jwt.js'
 import { generateRefreshToken, hashToken } from '../../lib/refresh-token.js'
 import type {
@@ -22,6 +23,10 @@ export interface AuthSession {
 }
 
 async function issueSession(user: PrismaUser): Promise<AuthSession> {
+  if (!isLoginAllowed(user.role as Role)) {
+    throw forbidden('This account type cannot sign in')
+  }
+
   const refreshToken = generateRefreshToken()
   const expiresAt = addDuration(new Date(), env.JWT_REFRESH_EXPIRES_IN)
 

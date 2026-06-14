@@ -4,6 +4,7 @@ import { prisma } from '../../config/db.js'
 import { conflict, forbidden, notFound, validationError } from '../../lib/errors.js'
 import { storage } from '../../lib/storage.js'
 import { EnrollmentStatus, Role } from '../../shared/enums.js'
+import { isAdminStaff } from '../../shared/roles.js'
 import type { issueCertificateSchema } from '../../shared/schemas/certificate.js'
 import { generateCertificatePdf } from './certificate.pdf.js'
 import {
@@ -41,7 +42,7 @@ async function assertCanIssue(
     courseId: string | null
   },
 ): Promise<void> {
-  if (role === Role.ADMIN) return
+  if (isAdminStaff(role)) return
 
   if (enrollment.batchId) {
     const assigned = await prisma.batchInstructor.findFirst({

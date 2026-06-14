@@ -3,6 +3,7 @@ import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { forbidden, notFound, validationError } from '../../lib/errors.js'
 import { EnrollmentStatus, Role } from '../../shared/enums.js'
+import { isAdminStaff } from '../../shared/roles.js'
 import {
   createResourceSchema,
   resourceListQuerySchema,
@@ -27,7 +28,7 @@ async function assertCanViewScope(
   batchId?: string,
   courseId?: string,
 ): Promise<void> {
-  if (role === Role.ADMIN) return
+  if (isAdminStaff(role)) return
 
   if (courseId) {
     if (role === Role.INSTRUCTOR) return
@@ -69,7 +70,7 @@ async function assertInstructorCanManageBatch(
   role: Role,
   batchId: string,
 ): Promise<void> {
-  if (role === Role.ADMIN) return
+  if (isAdminStaff(role)) return
   const assigned = await prisma.batchInstructor.findFirst({
     where: { batchId, instructorId: userId },
   })

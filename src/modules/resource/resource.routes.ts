@@ -3,6 +3,7 @@ import { authenticate } from '../../middleware/auth.js'
 import { requireRole } from '../../middleware/rbac.js'
 import { validate } from '../../middleware/validate.js'
 import { Role } from '../../shared/enums.js'
+import { ADMIN_ROLES } from '../../shared/roles.js'
 import {
   createResourceSchema,
   resourceListQuerySchema,
@@ -21,7 +22,7 @@ resourceRouter.get(
 resourceRouter.post(
   '/',
   authenticate,
-  requireRole(Role.INSTRUCTOR, Role.ADMIN),
+  requireRole(...ADMIN_ROLES),
   validate(createResourceSchema),
   controller.create,
 )

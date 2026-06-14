@@ -3,6 +3,7 @@ import { authenticate } from '../../middleware/auth.js'
 import { requireRole } from '../../middleware/rbac.js'
 import { validate } from '../../middleware/validate.js'
 import { Role } from '../../shared/enums.js'
+import { ADMIN_ROLES } from '../../shared/roles.js'
 import {
   createRecordingSchema,
   createSessionSchema,
@@ -18,7 +19,7 @@ export const meLiveclassRouter = Router()
 sessionsRouter.post(
   '/',
   authenticate,
-  requireRole(Role.INSTRUCTOR, Role.ADMIN),
+  requireRole(...ADMIN_ROLES),
   validate(createSessionSchema),
   controller.createSession,
 )
@@ -26,7 +27,7 @@ sessionsRouter.post(
 sessionsRouter.patch(
   '/:id',
   authenticate,
-  requireRole(Role.INSTRUCTOR, Role.ADMIN),
+  requireRole(...ADMIN_ROLES),
   validate(updateSessionSchema),
   controller.updateSession,
 )
@@ -34,7 +35,7 @@ sessionsRouter.patch(
 sessionsRouter.post(
   '/:id/attendance',
   authenticate,
-  requireRole(Role.INSTRUCTOR, Role.ADMIN),
+  requireRole(...ADMIN_ROLES),
   validate(markAttendanceSchema),
   controller.markAttendance,
 )
@@ -42,7 +43,7 @@ sessionsRouter.post(
 recordingsRouter.post(
   '/',
   authenticate,
-  requireRole(Role.INSTRUCTOR, Role.ADMIN),
+  requireRole(...ADMIN_ROLES),
   validate(createRecordingSchema),
   controller.createRecording,
 )

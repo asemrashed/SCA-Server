@@ -3,6 +3,7 @@ import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { conflict, notFound } from '../../lib/errors.js'
 import { Role } from '../../shared/enums.js'
+import { isAdminStaff, isStaff } from '../../shared/roles.js'
 import {
   courseListQuerySchema,
   createCourseSchema,
@@ -40,7 +41,7 @@ function parseSort(sort?: string): Prisma.CourseOrderByWithRelationInput {
 }
 
 function canViewProtectedContent(role?: Role): boolean {
-  return role === Role.ADMIN || role === Role.INSTRUCTOR
+  return role !== undefined && isStaff(role)
 }
 
 async function findCourseOrThrow(idOrSlug: string) {

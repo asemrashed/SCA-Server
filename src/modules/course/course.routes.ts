@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { authenticate } from '../../middleware/auth.js'
 import { requireRole } from '../../middleware/rbac.js'
 import { validate } from '../../middleware/validate.js'
-import { Role } from '../../shared/enums.js'
+import { ADMIN_ROLES, SUPER_ADMIN_ROLES } from '../../shared/roles.js'
 import {
   courseListQuerySchema,
   createCourseSchema,
@@ -19,20 +19,20 @@ courseRouter.get('/:idOrSlug', controller.getByIdOrSlug)
 courseRouter.post(
   '/',
   authenticate,
-  requireRole(Role.ADMIN, Role.INSTRUCTOR),
+  requireRole(...ADMIN_ROLES),
   validate(createCourseSchema),
   controller.create,
 )
 courseRouter.patch(
   '/:id',
   authenticate,
-  requireRole(Role.ADMIN, Role.INSTRUCTOR),
+  requireRole(...ADMIN_ROLES),
   validate(updateCourseSchema),
   controller.update,
 )
 courseRouter.delete(
   '/:id',
   authenticate,
-  requireRole(Role.ADMIN),
+  requireRole(...SUPER_ADMIN_ROLES),
   controller.remove,
 )

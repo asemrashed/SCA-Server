@@ -14,6 +14,7 @@ import { courseRouter } from './modules/course/course.routes.js'
 import {
   enrollmentRouter,
   meEnrollmentRouter,
+  adminEnrollmentRouter,
 } from './modules/enrollment/enrollment.routes.js'
 import { resourceRouter } from './modules/resource/resource.routes.js'
 import {
@@ -41,6 +42,13 @@ import {
   certificateRouter,
   meCertificateRouter,
 } from './modules/certificate/certificate.routes.js'
+import { adminUserRouter } from './modules/admin-user/admin-user.routes.js'
+import {
+  adminOrderRouter,
+  meOrderRouter,
+  orderRouter,
+  productRouter,
+} from './modules/shop/shop.routes.js'
 
 export function createApp() {
   const app = express()
@@ -83,6 +91,8 @@ export function createApp() {
   api.use('/sessions', sessionsRouter)
   api.use('/recordings', recordingsRouter)
   api.use('/enrollments', enrollmentRouter)
+  api.use('/admin/enrollments', adminEnrollmentRouter)
+  api.use('/admin/users', adminUserRouter)
   api.use('/me', meEnrollmentRouter)
   api.use('/resources', resourceRouter)
   api.use('/uploads', uploadRouter)
@@ -91,6 +101,10 @@ export function createApp() {
   api.use('/me', meLiveclassRouter)
   api.use('/me', meCertificateRouter)
   api.use('/certificates', certificateRouter)
+  api.use('/products', productRouter)
+  api.use('/orders', orderRouter)
+  api.use('/me', meOrderRouter)
+  api.use('/admin/orders', adminOrderRouter)
 
   app.use('/api', api)
 

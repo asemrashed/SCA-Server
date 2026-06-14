@@ -9,6 +9,7 @@ import {
   QuestionType,
   Role,
 } from '../../shared/enums.js'
+import { isAdminStaff, isStaff } from '../../shared/roles.js'
 import type {
   createAssignmentSchema,
   createExamSchema,
@@ -49,16 +50,12 @@ const examInclude = {
   },
 } satisfies Prisma.ExamInclude
 
-function isStaff(role: Role): boolean {
-  return role === Role.ADMIN || role === Role.INSTRUCTOR
-}
-
 function includeCorrectForRole(role: Role): boolean {
   return isStaff(role)
 }
 
 async function assertBatchInstructorOrAdmin(userId: string, role: Role, batchId: string): Promise<void> {
-  if (role === Role.ADMIN) return
+  if (isAdminStaff(role)) return
   if (role !== Role.INSTRUCTOR) {
     throw forbidden()
   }
@@ -668,7 +665,7 @@ export async function gradeSubmission(
 
   if (role === Role.INSTRUCTOR && submission.assignment.batchId) {
     await assertBatchInstructorOrAdmin(userId, role, submission.assignment.batchId)
-  } else if (role !== Role.ADMIN) {
+  } else if (!isAdminStaff(role)) {
     throw forbidden()
   }
 

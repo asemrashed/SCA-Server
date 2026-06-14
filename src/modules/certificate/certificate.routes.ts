@@ -3,6 +3,7 @@ import { authenticate } from '../../middleware/auth.js'
 import { requireRole } from '../../middleware/rbac.js'
 import { validate } from '../../middleware/validate.js'
 import { Role } from '../../shared/enums.js'
+import { ADMIN_ROLES } from '../../shared/roles.js'
 import { issueCertificateSchema } from '../../shared/schemas/certificate.js'
 import * as controller from './certificate.controller.js'
 
@@ -19,7 +20,7 @@ meCertificateRouter.get(
 certificateRouter.post(
   '/issue',
   authenticate,
-  requireRole(Role.ADMIN, Role.INSTRUCTOR),
+  requireRole(...ADMIN_ROLES),
   validate(issueCertificateSchema),
   controller.issue,
 )

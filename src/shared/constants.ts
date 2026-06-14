@@ -14,4 +14,4 @@ export function formatBDT(minor: number): string {
 
 export const DEFAULT_PAGE_SIZE = 20
 
-export const ROLE_LIST = ['STUDENT', 'INSTRUCTOR', 'ADMIN'] as const
+export const ROLE_LIST = ['STUDENT', 'INSTRUCTOR', 'ADMIN', 'SUPER_ADMIN'] as const

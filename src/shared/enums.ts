@@ -2,6 +2,7 @@ export enum Role {
   STUDENT = 'STUDENT',
   INSTRUCTOR = 'INSTRUCTOR',
   ADMIN = 'ADMIN',
+  SUPER_ADMIN = 'SUPER_ADMIN',
 }
 
 export enum ErrorCode {
@@ -88,5 +89,18 @@ export enum PaymentStatus {
   PENDING = 'PENDING',
   PAID = 'PAID',
   FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum ProductType {
+  BOOK = 'BOOK',
+  NOTES = 'NOTES',
+  QUESTION_BANK = 'QUESTION_BANK',
+  OTHER = 'OTHER',
+}
+
+export enum OrderStatus {
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
   CANCELLED = 'CANCELLED',
 }
