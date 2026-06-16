@@ -2,8 +2,9 @@ import type { Prisma } from '@prisma/client'
 import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { conflict, forbidden, notFound, validationError } from '../../lib/errors.js'
-import { BatchStatus, EnrollmentStatus } from '../../shared/enums.js'
+import { BatchStatus, DeliveryMode, EnrollmentStatus } from '../../shared/enums.js'
 import { createEnrollmentSchema, reviewEnrollmentSchema } from '../../shared/schemas/enrollment.js'
+import { getGrantedSourceBatchIds } from './enrollment.access.js'
 import {
   toEnrollmentDetail,
   toEnrollmentListItem,
@@ -21,12 +22,16 @@ const lessonOrder = { orderBy: { order: 'asc' as const } }
 
 const batchContentInclude = {
   instructors: { include: { instructor: { select: { name: true } } } },
-  subjects: {
-    orderBy: { order: 'asc' as const },
+  course: {
     include: {
-      modules: {
+      subjects: {
         orderBy: { order: 'asc' as const },
-        include: { lessons: lessonOrder },
+        include: {
+          modules: {
+            orderBy: { order: 'asc' as const },
+            include: { lessons: lessonOrder },
+          },
+        },
       },
     },
   },
@@ -62,7 +67,9 @@ function assertEnrollmentRow(row: {
 
 function allLessonIds(row: EnrollmentWithRelations): string[] {
   if (row.batchId && row.batch) {
-    return row.batch.subjects.flatMap((s) => s.modules.flatMap((m) => m.lessons.map((l) => l.id)))
+    return row.batch.course.subjects.flatMap((s) =>
+      s.modules.flatMap((m) => m.lessons.map((l) => l.id)),
+    )
   }
   return row.course!.modules.flatMap((m) => m.lessons.map((l) => l.id))
 }
@@ -120,7 +127,7 @@ export async function getMyEnrollment(
   if (row.status !== EnrollmentStatus.ACTIVE && row.status !== EnrollmentStatus.COMPLETED) {
     throw forbidden('Enrollment is not active')
   }
-  return toEnrollmentDetail(row)
+  return toEnrollmentDetail(row, row.batchId ? await getGrantedSourceBatchIds(row.batchId) : [])
 }
 
 async function handleExistingEnrollment(
@@ -186,7 +193,12 @@ export async function createEnrollment(
   }
 
   const course = await prisma.course.findFirst({
-    where: { id: input.courseId!, deletedAt: null, isPublished: true },
+    where: {
+      id: input.courseId!,
+      deletedAt: null,
+      isPublished: true,
+      deliveryMode: DeliveryMode.RECORDED,
+    },
   })
   if (!course) {
     throw notFound('Course not found')
@@ -237,7 +249,7 @@ export async function markLessonComplete(
       enrollment = await prisma.enrollment.findFirst({
         where: {
           studentId,
-          batchId: subject.batchId,
+          batch: { courseId: subject.courseId },
           status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
         },
       })

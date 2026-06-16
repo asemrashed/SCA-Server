@@ -14,6 +14,7 @@ import type {
   markAttendanceSchema,
   updateSessionSchema,
 } from '../../shared/schemas/liveclass.js'
+import { getAccessibleBatchIds } from '../enrollment/enrollment.access.js'
 import {
   toAttendanceSummary,
   toLiveSessionDto,
@@ -48,17 +49,6 @@ async function isEnrolledInBatch(studentId: string, batchId: string): Promise<bo
   return !!row
 }
 
-async function isEnrolledInCourse(studentId: string, courseId: string): Promise<boolean> {
-  const row = await prisma.enrollment.findFirst({
-    where: {
-      studentId,
-      courseId,
-      status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
-    },
-  })
-  return !!row
-}
-
 async function assertBatchSessionAccess(
   userId: string,
   role: Role,
@@ -70,25 +60,8 @@ async function assertBatchSessionAccess(
   throw forbidden('Not allowed to access this batch')
 }
 
-async function assertCourseSessionAccess(
-  userId: string,
-  role: Role,
-  courseId: string,
-): Promise<void> {
-  if (isAdminStaff(role)) return
-  if (role === Role.INSTRUCTOR) return
-  if (role === Role.STUDENT && (await isEnrolledInCourse(userId, courseId))) return
-  throw forbidden('Not allowed to access this course')
-}
-
 async function assertBatchEnrolled(studentId: string, batchId: string): Promise<void> {
   if (!(await isEnrolledInBatch(studentId, batchId))) {
-    throw forbidden('Enrollment required')
-  }
-}
-
-async function assertCourseEnrolled(studentId: string, courseId: string): Promise<void> {
-  if (!(await isEnrolledInCourse(studentId, courseId))) {
     throw forbidden('Enrollment required')
   }
 }
@@ -97,11 +70,6 @@ async function assertCanManageBatch(userId: string, role: Role, batchId: string)
   if (isAdminStaff(role)) return
   if (role === Role.INSTRUCTOR && (await isBatchInstructor(batchId, userId))) return
   throw forbidden('Not allowed to manage this batch')
-}
-
-async function assertCanManageCourse(userId: string, role: Role): Promise<void> {
-  if (isStaff(role)) return
-  throw forbidden('Not allowed to manage course sessions')
 }
 
 async function getSessionOrThrow(sessionId: string) {
@@ -126,31 +94,31 @@ export async function listBatchSessions(
   }
   await assertBatchSessionAccess(userId, role, batchId)
 
+  const batchIds =
+    role === Role.STUDENT ? await getAccessibleBatchIds(batchId) : [batchId]
+
   const sessions = await prisma.liveSession.findMany({
-    where: { batchId },
+    where: { batchId: { in: batchIds } },
     include: sessionInclude,
     orderBy: { scheduledAt: 'desc' },
   })
   return sessions.map(toLiveSessionDto)
 }
 
+/** @deprecated Live sessions are batch-only in v3. Resolves course → first accessible batch for staff. */
 export async function listCourseSessions(
   userId: string,
   role: Role,
   courseId: string,
 ): Promise<LiveSessionDto[]> {
-  const course = await prisma.course.findFirst({ where: { id: courseId, deletedAt: null } })
-  if (!course) {
-    throw notFound('Course not found')
-  }
-  await assertCourseSessionAccess(userId, role, courseId)
-
-  const sessions = await prisma.liveSession.findMany({
-    where: { courseId },
-    include: sessionInclude,
-    orderBy: { scheduledAt: 'desc' },
+  const batch = await prisma.batch.findFirst({
+    where: { courseId, deletedAt: null },
+    orderBy: { startDate: 'desc' },
   })
-  return sessions.map(toLiveSessionDto)
+  if (!batch) {
+    return []
+  }
+  return listBatchSessions(userId, role, batch.id)
 }
 
 export async function createSession(
@@ -158,26 +126,15 @@ export async function createSession(
   role: Role,
   input: CreateSessionInput,
 ): Promise<LiveSessionDto> {
-  if (input.batchId) {
-    const batch = await prisma.batch.findFirst({ where: { id: input.batchId, deletedAt: null } })
-    if (!batch) {
-      throw notFound('Batch not found')
-    }
-    await assertCanManageBatch(userId, role, input.batchId)
-  } else {
-    const course = await prisma.course.findFirst({
-      where: { id: input.courseId!, deletedAt: null },
-    })
-    if (!course) {
-      throw notFound('Course not found')
-    }
-    await assertCanManageCourse(userId, role)
+  const batch = await prisma.batch.findFirst({ where: { id: input.batchId, deletedAt: null } })
+  if (!batch) {
+    throw notFound('Batch not found')
   }
+  await assertCanManageBatch(userId, role, input.batchId)
 
   const session = await prisma.liveSession.create({
     data: {
-      batchId: input.batchId ?? null,
-      courseId: input.courseId ?? null,
+      batchId: input.batchId,
       title: input.title,
       scheduledAt: input.scheduledAt,
       joinUrl: input.joinUrl ?? null,
@@ -194,12 +151,7 @@ export async function updateSession(
   input: UpdateSessionInput,
 ): Promise<LiveSessionDto> {
   const existing = await getSessionOrThrow(sessionId)
-
-  if (existing.batchId) {
-    await assertCanManageBatch(userId, role, existing.batchId)
-  } else if (existing.courseId) {
-    await assertCanManageCourse(userId, role)
-  }
+  await assertCanManageBatch(userId, role, existing.batchId)
 
   const updateData: {
     title?: string
@@ -242,25 +194,32 @@ export async function listBatchRecordings(
   }
   await assertBatchEnrolled(studentId, batchId)
 
+  const batchIds = await getAccessibleBatchIds(batchId)
   const recordings = await prisma.recording.findMany({
-    where: { batchId },
+    where: { batchId: { in: batchIds } },
     orderBy: { createdAt: 'desc' },
   })
   return recordings.map(toRecordingDto)
 }
 
+/** @deprecated Recordings for live replays are batch-scoped. Returns empty for recorded-only courses. */
 export async function listCourseRecordings(
   studentId: string,
   courseId: string,
 ): Promise<RecordingDto[]> {
-  const course = await prisma.course.findFirst({ where: { id: courseId, deletedAt: null } })
-  if (!course) {
-    throw notFound('Course not found')
+  const enrollment = await prisma.enrollment.findFirst({
+    where: {
+      studentId,
+      courseId,
+      status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
+    },
+  })
+  if (!enrollment) {
+    throw forbidden('Enrollment required')
   }
-  await assertCourseEnrolled(studentId, courseId)
 
   const recordings = await prisma.recording.findMany({
-    where: { courseId },
+    where: { lesson: { module: { courseId } } },
     orderBy: { createdAt: 'desc' },
   })
   return recordings.map(toRecordingDto)
@@ -272,19 +231,11 @@ export async function createRecording(
   input: CreateRecordingInput,
 ): Promise<RecordingDto> {
   let batchId = input.batchId ?? null
-  let courseId = input.courseId ?? null
 
   if (input.sessionId) {
     const session = await getSessionOrThrow(input.sessionId)
-    if (session.batchId) {
-      await assertCanManageBatch(userId, role, session.batchId)
-      batchId = session.batchId
-      courseId = null
-    } else if (session.courseId) {
-      await assertCanManageCourse(userId, role)
-      courseId = session.courseId
-      batchId = null
-    }
+    await assertCanManageBatch(userId, role, session.batchId)
+    batchId = session.batchId
     if (session.recording) {
       throw validationError('This session already has a recording')
     }
@@ -294,14 +245,12 @@ export async function createRecording(
       throw notFound('Batch not found')
     }
     await assertCanManageBatch(userId, role, batchId)
-  } else if (courseId) {
-    const course = await prisma.course.findFirst({ where: { id: courseId, deletedAt: null } })
-    if (!course) {
-      throw notFound('Course not found')
+  } else if (input.lessonId) {
+    if (!isStaff(role)) {
+      throw forbidden('Not allowed to attach lesson recordings')
     }
-    await assertCanManageCourse(userId, role)
   } else {
-    throw validationError('Provide sessionId or exactly one of batchId / courseId')
+    throw validationError('Provide sessionId, batchId, or lessonId')
   }
 
   if (input.lessonId) {
@@ -317,7 +266,6 @@ export async function createRecording(
   const recording = await prisma.recording.create({
     data: {
       batchId,
-      courseId,
       lessonId: input.lessonId ?? null,
       sessionId: input.sessionId ?? null,
       title: input.title,
@@ -335,9 +283,6 @@ export async function markSessionAttendance(
   marks: MarkAttendanceInput,
 ): Promise<{ marked: number }> {
   const session = await getSessionOrThrow(sessionId)
-  if (!session.batchId) {
-    throw validationError('Attendance is only supported for batch sessions')
-  }
   await assertCanManageBatch(userId, role, session.batchId)
 
   const studentIds = marks.map((m) => m.studentId)

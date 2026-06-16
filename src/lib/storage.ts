@@ -39,7 +39,11 @@ class CloudinaryStorage implements StorageClient {
   }
 
   async upload(folder: string, data: Buffer, contentType: string): Promise<StorageUploadResult> {
-    const resourceType = contentType.startsWith('video/') ? 'video' : 'auto'
+    const resourceType = contentType.startsWith('video/')
+      ? 'video'
+      : contentType === 'application/pdf'
+        ? 'raw'
+        : 'auto'
 
     return new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(

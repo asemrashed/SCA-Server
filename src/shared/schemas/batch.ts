@@ -1,14 +1,9 @@
 import { z } from 'zod'
 import { BatchStatus } from '../enums.js'
-import { lessonInputSchema, moduleInputSchema } from './course.js'
 
-export const subjectInputSchema = z.object({
-  title: z.string().min(1).max(200),
-  order: z.number().int().min(0).default(0),
-  modules: z.array(moduleInputSchema).optional(),
-})
-
+/** Cohort under a live course — curriculum lives on the parent course. */
 export const createBatchSchema = z.object({
+  courseId: z.string().cuid(),
   title: z.string().min(1).max(200),
   slug: z
     .string()
@@ -23,15 +18,18 @@ export const createBatchSchema = z.object({
   endDate: z.coerce.date().optional().nullable(),
   thumbnail: z.string().url().optional().nullable(),
   instructorIds: z.array(z.string().cuid()).optional(),
-  subjects: z.array(subjectInputSchema).optional(),
 })
 
-export const updateBatchSchema = createBatchSchema.partial()
+/** Body for POST /courses/:courseId/batches — courseId comes from the URL. */
+export const createBatchBodySchema = createBatchSchema.omit({ courseId: true })
+
+export const updateBatchSchema = createBatchSchema.omit({ courseId: true }).partial()
 
 export const batchListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
   status: z.nativeEnum(BatchStatus).optional(),
+  courseId: z.string().cuid().optional(),
   sort: z.string().optional(),
 })

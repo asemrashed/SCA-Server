@@ -2,14 +2,11 @@ import type { Prisma } from '@prisma/client'
 import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { conflict, forbidden, notFound, validationError } from '../../lib/errors.js'
-import {
-  AttemptStatus,
-  EnrollmentStatus,
-  ExamStatus,
-  QuestionType,
-  Role,
-} from '../../shared/enums.js'
+import { AttemptStatus, DeliveryMode, EnrollmentStatus, ExamStatus, QuestionType, Role } from '../../shared/enums.js'
 import { isAdminStaff, isStaff } from '../../shared/roles.js'
+import {
+  assertStudentCourseContentAccess,
+} from '../enrollment/enrollment.access.js'
 import type {
   createAssignmentSchema,
   createExamSchema,
@@ -54,57 +51,23 @@ function includeCorrectForRole(role: Role): boolean {
   return isStaff(role)
 }
 
-async function assertBatchInstructorOrAdmin(userId: string, role: Role, batchId: string): Promise<void> {
-  if (isAdminStaff(role)) return
-  if (role !== Role.INSTRUCTOR) {
-    throw forbidden()
-  }
-  const link = await prisma.batchInstructor.findUnique({
-    where: { batchId_instructorId: { batchId, instructorId: userId } },
-  })
-  if (!link) {
-    throw forbidden('Not assigned to this batch')
-  }
-}
-
-async function assertActiveEnrollment(
-  studentId: string,
-  scope: { batchId?: string | null; courseId?: string | null },
-): Promise<void> {
-  const enrollment = await prisma.enrollment.findFirst({
-    where: {
-      studentId,
-      status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
-      ...(scope.batchId ? { batchId: scope.batchId } : {}),
-      ...(scope.courseId ? { courseId: scope.courseId } : {}),
-    },
-  })
-  if (!enrollment) {
-    throw forbidden('Not enrolled in this content')
-  }
-}
-
-async function assertBatchAccess(
-  userId: string,
-  role: Role,
-  batchId: string,
-): Promise<void> {
-  if (isStaff(role)) {
-    if (role === Role.INSTRUCTOR) {
-      await assertBatchInstructorOrAdmin(userId, role, batchId)
-    }
-    return
-  }
-  await assertActiveEnrollment(userId, { batchId })
-}
-
-async function assertCourseAccess(
+async function assertCourseContentAccess(
   userId: string,
   role: Role,
   courseId: string,
 ): Promise<void> {
-  if (isStaff(role)) return
-  await assertActiveEnrollment(userId, { courseId })
+  if (isStaff(role)) {
+    if (role === Role.INSTRUCTOR) {
+      const assigned = await prisma.batchInstructor.findFirst({
+        where: { instructorId: userId, batch: { courseId } },
+      })
+      if (!assigned && !isAdminStaff(role)) {
+        throw forbidden('Not assigned to this course')
+      }
+    }
+    return
+  }
+  await assertStudentCourseContentAccess(userId, courseId)
 }
 
 async function assertModuleLessonsComplete(
@@ -112,19 +75,22 @@ async function assertModuleLessonsComplete(
   moduleId: string,
   courseId: string,
 ): Promise<void> {
-  const module = await prisma.module.findUnique({
-    where: { id: moduleId },
+  const module = await prisma.module.findFirst({
+    where: {
+      id: moduleId,
+      OR: [{ courseId }, { subject: { courseId } }],
+    },
     include: { lessons: { select: { id: true } } },
   })
-  if (!module || module.courseId !== courseId) {
+  if (!module) {
     throw validationError('Invalid module for course exam')
   }
 
   const enrollment = await prisma.enrollment.findFirst({
     where: {
       studentId,
-      courseId,
       status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
+      OR: [{ courseId }, { batch: { courseId } }],
     },
     include: {
       lessonProgress: {
@@ -265,30 +231,7 @@ export async function listBatchExams(
   })
   if (!batch) throw notFound('Batch not found')
 
-  await assertBatchAccess(userId, role, batchId)
-
-  const exams = await prisma.exam.findMany({
-    where: {
-      batchId,
-      ...(isStaff(role) ? {} : { status: ExamStatus.PUBLISHED }),
-    },
-    include: examInclude,
-    orderBy: { createdAt: 'desc' },
-  })
-
-  let attemptsByExam = new Map<string, Prisma.ExamAttemptGetPayload<object>>()
-  if (role === Role.STUDENT) {
-    const attempts = await prisma.examAttempt.findMany({
-      where: { studentId: userId, examId: { in: exams.map((e) => e.id) } },
-    })
-    attemptsByExam = new Map(attempts.map((a) => [a.examId, a]))
-  }
-
-  return {
-    data: exams.map((exam) =>
-      toExamListItem(exam, includeCorrectForRole(role), attemptsByExam.get(exam.id)),
-    ),
-  }
+  return listCourseExams(userId, role, batch.courseId)
 }
 
 export async function listCourseExams(
@@ -301,7 +244,7 @@ export async function listCourseExams(
   })
   if (!course) throw notFound('Course not found')
 
-  await assertCourseAccess(userId, role, courseId)
+  await assertCourseContentAccess(userId, role, courseId)
 
   const exams = await prisma.exam.findMany({
     where: {
@@ -335,30 +278,21 @@ export async function createExam(input: CreateExamInput): Promise<ExamDetailDto>
     throw validationError('One or more questions not found')
   }
 
-  if (input.batchId) {
-    const batch = await prisma.batch.findFirst({
-      where: { id: input.batchId, deletedAt: null },
-    })
-    if (!batch) throw notFound('Batch not found')
+  const course = await prisma.course.findFirst({
+    where: { id: input.courseId, deletedAt: null },
+  })
+  if (!course) throw notFound('Course not found')
 
-    if (input.moduleId) {
-      const module = await prisma.module.findFirst({
-        where: { id: input.moduleId, subject: { batchId: input.batchId } },
-      })
-      if (!module) throw validationError('moduleId must belong to the batch')
-    }
-  }
-
-  if (input.courseId) {
-    const course = await prisma.course.findFirst({
-      where: { id: input.courseId, deletedAt: null },
-    })
-    if (!course) throw notFound('Course not found')
-
+  if (input.moduleId) {
     const module = await prisma.module.findFirst({
-      where: { id: input.moduleId!, courseId: input.courseId },
+      where: {
+        id: input.moduleId,
+        OR: [{ courseId: input.courseId }, { subject: { courseId: input.courseId } }],
+      },
     })
     if (!module) throw validationError('moduleId must belong to the course')
+  } else if (course.deliveryMode === DeliveryMode.RECORDED) {
+    throw validationError('moduleId is required for recorded course exams')
   }
 
   const totalMarks = questions.reduce((sum, q) => sum + q.marks, 0)
@@ -366,8 +300,7 @@ export async function createExam(input: CreateExamInput): Promise<ExamDetailDto>
 
   const exam = await prisma.exam.create({
     data: {
-      batchId: input.batchId ?? null,
-      courseId: input.courseId ?? null,
+      courseId: input.courseId,
       moduleId: input.moduleId ?? null,
       title: input.title,
       durationMin: input.durationMin ?? null,
@@ -398,11 +331,11 @@ export async function startExamAttempt(studentId: string, examId: string): Promi
 
   assertExamWindow(exam)
 
-  if (exam.batchId) {
-    await assertActiveEnrollment(studentId, { batchId: exam.batchId })
-  } else if (exam.courseId) {
-    await assertActiveEnrollment(studentId, { courseId: exam.courseId })
-    if (exam.moduleId) {
+  await assertStudentCourseContentAccess(studentId, exam.courseId)
+
+  if (exam.moduleId) {
+    const course = await prisma.course.findUnique({ where: { id: exam.courseId } })
+    if (course?.deliveryMode === DeliveryMode.RECORDED) {
       await assertModuleLessonsComplete(studentId, exam.moduleId, exam.courseId)
     }
   }
@@ -500,29 +433,7 @@ export async function listBatchAssignments(
   })
   if (!batch) throw notFound('Batch not found')
 
-  await assertBatchAccess(userId, role, batchId)
-
-  const assignments = await prisma.assignment.findMany({
-    where: { batchId },
-    orderBy: { createdAt: 'desc' },
-  })
-
-  let submissionsByAssignment = new Map<string, Prisma.SubmissionGetPayload<object>>()
-  if (role === Role.STUDENT) {
-    const submissions = await prisma.submission.findMany({
-      where: {
-        studentId: userId,
-        assignmentId: { in: assignments.map((a) => a.id) },
-      },
-    })
-    submissionsByAssignment = new Map(submissions.map((s) => [s.assignmentId, s]))
-  }
-
-  return {
-    data: assignments.map((a) =>
-      toAssignmentListItem(a, submissionsByAssignment.get(a.id)),
-    ),
-  }
+  return listCourseAssignments(userId, role, batch.courseId)
 }
 
 export async function listCourseAssignments(
@@ -535,7 +446,7 @@ export async function listCourseAssignments(
   })
   if (!course) throw notFound('Course not found')
 
-  await assertCourseAccess(userId, role, courseId)
+  await assertCourseContentAccess(userId, role, courseId)
 
   const assignments = await prisma.assignment.findMany({
     where: { courseId },
@@ -563,38 +474,24 @@ export async function listCourseAssignments(
 export async function createAssignment(
   input: CreateAssignmentInput,
 ): Promise<AssignmentListItemDto> {
-  if (input.batchId) {
-    const batch = await prisma.batch.findFirst({
-      where: { id: input.batchId, deletedAt: null },
+  const course = await prisma.course.findFirst({
+    where: { id: input.courseId, deletedAt: null },
+  })
+  if (!course) throw notFound('Course not found')
+
+  if (input.moduleId) {
+    const module = await prisma.module.findFirst({
+      where: {
+        id: input.moduleId,
+        OR: [{ courseId: input.courseId }, { subject: { courseId: input.courseId } }],
+      },
     })
-    if (!batch) throw notFound('Batch not found')
-
-    if (input.moduleId) {
-      const module = await prisma.module.findFirst({
-        where: { id: input.moduleId, subject: { batchId: input.batchId } },
-      })
-      if (!module) throw validationError('moduleId must belong to the batch')
-    }
-  }
-
-  if (input.courseId) {
-    const course = await prisma.course.findFirst({
-      where: { id: input.courseId, deletedAt: null },
-    })
-    if (!course) throw notFound('Course not found')
-
-    if (input.moduleId) {
-      const module = await prisma.module.findFirst({
-        where: { id: input.moduleId, courseId: input.courseId },
-      })
-      if (!module) throw validationError('moduleId must belong to the course')
-    }
+    if (!module) throw validationError('moduleId must belong to the course')
   }
 
   const assignment = await prisma.assignment.create({
     data: {
-      batchId: input.batchId ?? null,
-      courseId: input.courseId ?? null,
+      courseId: input.courseId,
       moduleId: input.moduleId ?? null,
       title: input.title,
       description: input.description ?? null,
@@ -618,11 +515,7 @@ export async function submitAssignment(
     throw forbidden('Assignment deadline has passed')
   }
 
-  if (assignment.batchId) {
-    await assertActiveEnrollment(studentId, { batchId: assignment.batchId })
-  } else if (assignment.courseId) {
-    await assertActiveEnrollment(studentId, { courseId: assignment.courseId })
-  }
+  await assertStudentCourseContentAccess(studentId, assignment.courseId)
 
   const submission = await prisma.submission.upsert({
     where: {
@@ -663,8 +556,16 @@ export async function gradeSubmission(
   })
   if (!submission) throw notFound('Submission not found')
 
-  if (role === Role.INSTRUCTOR && submission.assignment.batchId) {
-    await assertBatchInstructorOrAdmin(userId, role, submission.assignment.batchId)
+  if (role === Role.INSTRUCTOR) {
+    const assigned = await prisma.batchInstructor.findFirst({
+      where: {
+        instructorId: userId,
+        batch: { courseId: submission.assignment.courseId },
+      },
+    })
+    if (!assigned) {
+      throw forbidden('Not assigned to this course')
+    }
   } else if (!isAdminStaff(role)) {
     throw forbidden()
   }

@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express'
 import { verifyAccessToken } from '../../lib/jwt.js'
 import type { Role } from '../../shared/enums.js'
+import * as batchService from '../batch/batch.service.js'
 import * as courseService from './course.service.js'
 
 function param(value: string | string[]): string {
@@ -60,6 +61,36 @@ export async function remove(req: Request, res: Response, next: NextFunction): P
   try {
     await courseService.deleteCourse(param(req.params.id))
     res.json({ data: { success: true } })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function listBatchesForCourse(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const role = req.auth?.role ?? getOptionalRole(req)
+    const data = await batchService.listBatchesByCourse(param(req.params.courseId), role)
+    res.json({ data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function createBatchForCourse(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const batch = await batchService.createBatch({
+      ...req.body,
+      courseId: param(req.params.courseId),
+    })
+    res.status(201).json({ data: batch })
   } catch (err) {
     next(err)
   }

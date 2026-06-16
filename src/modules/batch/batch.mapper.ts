@@ -1,19 +1,14 @@
-import type { Batch, BatchInstructor, Lesson, Module, Subject, User } from '@prisma/client'
-import type { BatchStatus, LessonType } from '../../shared/enums.js'
+import type { Batch, BatchInstructor, Course, User } from '@prisma/client'
+import type { BatchStatus } from '../../shared/enums.js'
 
-type LessonRow = Lesson
-type ModuleWithLessons = Module & { lessons: LessonRow[] }
-type SubjectWithModules = Subject & { modules: ModuleWithLessons[] }
 type InstructorRow = BatchInstructor & { instructor: Pick<User, 'id' | 'name' | 'avatarUrl'> }
-type BatchWithContent = Batch & {
-  subjects: SubjectWithModules[]
-  instructors: InstructorRow[]
-}
+type CourseSummary = Pick<Course, 'id' | 'title' | 'slug' | 'deliveryMode'>
 
 export interface BatchListItem {
   id: string
   title: string
   slug: string
+  courseId: string
   status: BatchStatus
   priceMinor: number
   capacity: number | null
@@ -29,35 +24,19 @@ export interface BatchInstructorDto {
   avatarUrl: string | null
 }
 
-export interface BatchLessonDto {
+export interface BatchCourseSummaryDto {
   id: string
   title: string
-  type: LessonType
-  durationS: number | null
-  order: number
-  isPreview: boolean
-  videoUrl?: string | null
-  content?: string | null
-}
-
-export interface BatchModuleDto {
-  id: string
-  title: string
-  order: number
-  lessons: BatchLessonDto[]
-}
-
-export interface BatchSubjectDto {
-  id: string
-  title: string
-  order: number
-  modules: BatchModuleDto[]
+  slug: string
+  deliveryMode: string
 }
 
 export interface BatchDetailDto {
   id: string
   title: string
   slug: string
+  courseId: string
+  course: BatchCourseSummaryDto
   status: BatchStatus
   priceMinor: number
   capacity: number | null
@@ -66,7 +45,11 @@ export interface BatchDetailDto {
   endDate: string | null
   thumbnail: string | null
   instructors: BatchInstructorDto[]
-  subjects: BatchSubjectDto[]
+}
+
+type BatchWithRelations = Batch & {
+  course: CourseSummary
+  instructors: InstructorRow[]
 }
 
 function toIso(date: Date | null): string | null {
@@ -78,6 +61,7 @@ export function toBatchListItem(batch: Batch): BatchListItem {
     id: batch.id,
     title: batch.title,
     slug: batch.slug,
+    courseId: batch.courseId,
     status: batch.status as BatchStatus,
     priceMinor: batch.priceMinor,
     capacity: batch.capacity,
@@ -88,39 +72,18 @@ export function toBatchListItem(batch: Batch): BatchListItem {
   }
 }
 
-function toLessonDto(lesson: LessonRow, includeProtectedFields: boolean): BatchLessonDto {
-  const base: BatchLessonDto = {
-    id: lesson.id,
-    title: lesson.title,
-    type: lesson.type as LessonType,
-    durationS: lesson.durationS,
-    order: lesson.order,
-    isPreview: lesson.isPreview,
-  }
-
-  if (includeProtectedFields) {
-    return {
-      ...base,
-      videoUrl: lesson.videoUrl,
-      content: lesson.content,
-    }
-  }
-
-  if (lesson.isPreview) {
-    return { ...base, videoUrl: lesson.videoUrl }
-  }
-
-  return base
-}
-
-export function toBatchDetail(
-  batch: BatchWithContent,
-  includeProtectedFields: boolean,
-): BatchDetailDto {
+export function toBatchDetail(batch: BatchWithRelations): BatchDetailDto {
   return {
     id: batch.id,
     title: batch.title,
     slug: batch.slug,
+    courseId: batch.courseId,
+    course: {
+      id: batch.course.id,
+      title: batch.course.title,
+      slug: batch.course.slug,
+      deliveryMode: batch.course.deliveryMode,
+    },
     status: batch.status as BatchStatus,
     priceMinor: batch.priceMinor,
     capacity: batch.capacity,
@@ -132,17 +95,6 @@ export function toBatchDetail(
       id: row.instructor.id,
       name: row.instructor.name,
       avatarUrl: row.instructor.avatarUrl,
-    })),
-    subjects: batch.subjects.map((subject) => ({
-      id: subject.id,
-      title: subject.title,
-      order: subject.order,
-      modules: subject.modules.map((mod) => ({
-        id: mod.id,
-        title: mod.title,
-        order: mod.order,
-        lessons: mod.lessons.map((lesson) => toLessonDto(lesson, includeProtectedFields)),
-      })),
     })),
   }
 }

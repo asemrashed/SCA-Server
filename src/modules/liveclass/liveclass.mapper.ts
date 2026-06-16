@@ -7,8 +7,7 @@ type SessionWithRecording = LiveSession & {
 
 export interface LiveSessionDto {
   id: string
-  batchId: string | null
-  courseId: string | null
+  batchId: string
   title: string
   status: SessionStatus
   joinUrl: string | null
@@ -26,7 +25,6 @@ export interface LiveSessionDto {
 export interface RecordingDto {
   id: string
   batchId: string | null
-  courseId: string | null
   lessonId: string | null
   sessionId: string | null
   title: string
@@ -49,7 +47,6 @@ export function toLiveSessionDto(session: SessionWithRecording): LiveSessionDto 
   return {
     id: session.id,
     batchId: session.batchId,
-    courseId: session.courseId,
     title: session.title,
     status: session.status as SessionStatus,
     joinUrl: session.joinUrl,
@@ -71,7 +68,6 @@ export function toRecordingDto(recording: Recording): RecordingDto {
   return {
     id: recording.id,
     batchId: recording.batchId,
-    courseId: recording.courseId,
     lessonId: recording.lessonId,
     sessionId: recording.sessionId,
     title: recording.title,

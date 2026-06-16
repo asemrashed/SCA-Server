@@ -21,6 +21,11 @@ export enum PhoneVerificationPurpose {
   PASSWORD_RESET = 'PASSWORD_RESET',
 }
 
+export enum DeliveryMode {
+  LIVE = 'LIVE',
+  RECORDED = 'RECORDED',
+}
+
 export enum BatchStatus {
   DRAFT = 'DRAFT',
   UPCOMING = 'UPCOMING',
@@ -30,7 +35,7 @@ export enum BatchStatus {
 }
 
 export enum LessonType {
-  VIDEO = 'VIDEO',
+  RECORDED = 'RECORDED',
   LIVE = 'LIVE',
   TEXT = 'TEXT',
   DOCUMENT = 'DOCUMENT',
@@ -103,4 +108,14 @@ export enum OrderStatus {
   PENDING = 'PENDING',
   CONFIRMED = 'CONFIRMED',
   CANCELLED = 'CANCELLED',
+}
+
+export enum ResourceCategory {
+  GENERAL = 'GENERAL',
+  LECTURE_SHEET = 'LECTURE_SHEET',
+  SOLUTION_PDF = 'SOLUTION_PDF',
+  NOTICE = 'NOTICE',
+  RESULT_SHEET = 'RESULT_SHEET',
+  EXAM = 'EXAM',
+  ASSIGNMENT = 'ASSIGNMENT',
 }

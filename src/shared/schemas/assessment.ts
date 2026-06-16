@@ -22,61 +22,28 @@ export const createQuestionSchema = z.object({
   marks: z.number().int().min(1).default(1),
 })
 
-export const createExamSchema = z
-  .object({
-    batchId: idSchema.optional(),
-    courseId: idSchema.optional(),
-    moduleId: idSchema.optional().nullable(),
-    title: z.string().min(1).max(200),
-    durationMin: z.number().int().positive().optional().nullable(),
-    questionIds: z.array(idSchema).min(1),
-    status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
-  })
-  .superRefine((data, ctx) => {
-    const hasBatch = Boolean(data.batchId)
-    const hasCourse = Boolean(data.courseId)
-    if (hasBatch === hasCourse) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Exactly one of batchId or courseId is required',
-        path: ['batchId'],
-      })
-    }
-    if (hasCourse && !data.moduleId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'moduleId is required for course exams',
-        path: ['moduleId'],
-      })
-    }
-  })
+export const createExamSchema = z.object({
+  courseId: idSchema,
+  moduleId: idSchema.optional().nullable(),
+  title: z.string().min(1).max(200),
+  durationMin: z.number().int().positive().optional().nullable(),
+  questionIds: z.array(idSchema).min(1),
+  status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
+})
 
 export const updateAttemptSchema = z.object({
   answers: z.record(z.string(), z.unknown()),
   submit: z.boolean().optional(),
 })
 
-export const createAssignmentSchema = z
-  .object({
-    batchId: idSchema.optional(),
-    courseId: idSchema.optional(),
-    moduleId: idSchema.optional().nullable(),
-    title: z.string().min(1).max(200),
-    description: z.string().max(10000).optional().nullable(),
-    totalMarks: z.number().int().min(1).default(100),
-    dueAt: z.coerce.date().optional().nullable(),
-  })
-  .superRefine((data, ctx) => {
-    const hasBatch = Boolean(data.batchId)
-    const hasCourse = Boolean(data.courseId)
-    if (hasBatch === hasCourse) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Exactly one of batchId or courseId is required',
-        path: ['batchId'],
-      })
-    }
-  })
+export const createAssignmentSchema = z.object({
+  courseId: idSchema,
+  moduleId: idSchema.optional().nullable(),
+  title: z.string().min(1).max(200),
+  description: z.string().max(10000).optional().nullable(),
+  totalMarks: z.number().int().min(1).default(100),
+  dueAt: z.coerce.date().optional().nullable(),
+})
 
 export const createSubmissionSchema = z
   .object({

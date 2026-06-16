@@ -15,6 +15,11 @@ enum Role {
   SUPER_ADMIN
 }
 
+enum DeliveryMode {
+  LIVE
+  RECORDED
+}
+
 enum BatchStatus {
   DRAFT
   UPCOMING
@@ -24,7 +29,7 @@ enum BatchStatus {
 }
 
 enum LessonType {
-  VIDEO
+  RECORDED
   LIVE
   TEXT
   DOCUMENT
@@ -135,41 +140,44 @@ model RefreshToken {
 }
 
 model Course {
-  id          String   @id @default(cuid())
-  title       String
-  slug        String   @unique
-  description String?
-  thumbnail   String?
-  category    String?
-  priceMinor  Int      @default(0)
-  isPublished Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?
+  id            String       @id @default(cuid())
+  title         String
+  slug          String       @unique
+  description   String?
+  thumbnail     String?
+  category      String?
+  deliveryMode  DeliveryMode
+  priceMinor    Int          @default(0)
+  isPublished   Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
 
+  subjects     Subject[]
   modules      Module[]
+  batches      Batch[]
   enrollments  Enrollment[]
-  liveSessions LiveSession[]
-  recordings   Recording[]
   exams        Exam[]
   assignments  Assignment[]
   resources    Resource[]
 
   @@index([category])
+  @@index([deliveryMode])
 }
 
 model Subject {
   id        String   @id @default(cuid())
-  batchId   String
-  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   title     String
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  modules Module[]
+  modules   Module[]
+  resources Resource[]
 
-  @@index([batchId])
+  @@index([courseId])
 }
 
 model Module {
@@ -183,7 +191,7 @@ model Module {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  lessons Lesson[]
+  lessons     Lesson[]
   exams       Exam[]
   assignments Assignment[]
   resources   Resource[]
@@ -197,7 +205,7 @@ model Lesson {
   moduleId  String
   module    Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   title     String
-  type      LessonType @default(VIDEO)
+  type      LessonType @default(RECORDED)
   videoUrl  String?
   content   String?
   durationS Int?
@@ -215,6 +223,8 @@ model Lesson {
 
 model Batch {
   id                   String      @id @default(cuid())
+  courseId             String
+  course               Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
   title                String
   slug                 String      @unique
   status               BatchStatus @default(DRAFT)
@@ -228,16 +238,27 @@ model Batch {
   updatedAt            DateTime    @updatedAt
   deletedAt            DateTime?
 
-  subjects     Subject[]
-  instructors  BatchInstructor[]
-  enrollments  Enrollment[]
-  liveSessions LiveSession[]
-  recordings   Recording[]
-  exams        Exam[]
-  assignments  Assignment[]
-  resources    Resource[]
+  instructors    BatchInstructor[]
+  enrollments    Enrollment[]
+  liveSessions   LiveSession[]
+  recordings     Recording[]
+  grantsGiven    BatchContentGrant[] @relation("GrantingBatch")
+  grantsReceived BatchContentGrant[] @relation("ReceivingBatch")
 
+  @@index([courseId])
   @@index([status])
+}
+
+model BatchContentGrant {
+  id               String   @id @default(cuid())
+  grantingBatchId  String
+  grantingBatch    Batch    @relation("GrantingBatch", fields: [grantingBatchId], references: [id], onDelete: Cascade)
+  receivingBatchId String
+  receivingBatch   Batch    @relation("ReceivingBatch", fields: [receivingBatchId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+
+  @@unique([grantingBatchId, receivingBatchId])
+  @@index([receivingBatchId])
 }
 
 model BatchInstructor {
@@ -290,33 +311,43 @@ model LessonProgress {
   @@index([lessonId])
 }
 
+enum ResourceCategory {
+  GENERAL
+  LECTURE_SHEET
+  SOLUTION_PDF
+  NOTICE
+  RESULT_SHEET
+  EXAM
+  ASSIGNMENT
+}
+
 model Resource {
-  id        String   @id @default(cuid())
+  id        String           @id @default(cuid())
   title     String
   fileUrl   String
   fileType  String?
-  batchId   String?
-  batch     Batch?   @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  courseId  String?
-  course    Course?  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  category  ResourceCategory @default(GENERAL)
+  courseId  String
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subjectId String?
+  subject   Subject?         @relation(fields: [subjectId], references: [id], onDelete: SetNull)
   moduleId  String?
-  module    Module?  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  module    Module?          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   lessonId  String?
-  lesson    Lesson?  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  lesson    Lesson?          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  createdAt DateTime         @default(now())
 
-  @@index([batchId])
   @@index([courseId])
+  @@index([courseId, category])
+  @@index([subjectId])
   @@index([moduleId])
   @@index([lessonId])
 }
 
 model LiveSession {
   id          String        @id @default(cuid())
-  batchId     String?
-  batch       Batch?        @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  courseId    String?
-  course      Course?       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batchId     String
+  batch       Batch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
   title       String
   status      SessionStatus @default(SCHEDULED)
   joinUrl     String?
@@ -330,27 +361,24 @@ model LiveSession {
   recording  Recording?
 
   @@index([batchId])
-  @@index([courseId])
   @@index([scheduledAt])
 }
 
 model Recording {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   batchId   String?
-  batch     Batch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
-  courseId  String?
-  course    Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  batch     Batch?       @relation(fields: [batchId], references: [id], onDelete: SetNull)
   lessonId  String?
-  lesson    Lesson?  @relation(fields: [lessonId], references: [id], onDelete: SetNull)
-  sessionId String?  @unique
+  lesson    Lesson?      @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  sessionId String?      @unique
   session   LiveSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   title     String
   videoUrl  String
   durationS Int?
-  createdAt DateTime @default(now())
+  createdAt DateTime     @default(now())
 
   @@index([batchId])
-  @@index([courseId])
+  @@index([lessonId])
 }
 
 model Attendance {
@@ -385,10 +413,8 @@ model Question {
 
 model Exam {
   id          String     @id @default(cuid())
-  batchId     String?
-  batch       Batch?     @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  courseId    String?
-  course      Course?    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId    String
+  course      Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
   moduleId    String?
   module      Module?    @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   title       String
@@ -403,7 +429,6 @@ model Exam {
   questions ExamQuestion[]
   attempts  ExamAttempt[]
 
-  @@index([batchId])
   @@index([courseId])
   @@index([moduleId])
 }
@@ -440,10 +465,8 @@ model ExamAttempt {
 
 model Assignment {
   id          String    @id @default(cuid())
-  batchId     String?
-  batch       Batch?    @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  courseId    String?
-  course      Course?   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId    String
+  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
   moduleId    String?
   module      Module?   @relation(fields: [moduleId], references: [id], onDelete: SetNull)
   title       String
@@ -455,7 +478,6 @@ model Assignment {
 
   submissions Submission[]
 
-  @@index([batchId])
   @@index([courseId])
   @@index([moduleId])
 }

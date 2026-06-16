@@ -9,7 +9,7 @@ import type {
   Subject,
   User,
 } from '@prisma/client'
-import { EnrollmentKind, EnrollmentStatus, LessonType } from '../../shared/enums.js'
+import { DeliveryMode, EnrollmentKind, EnrollmentStatus, LessonType } from '../../shared/enums.js'
 
 type ProgressRow = LessonProgress
 type LessonRow = Lesson
@@ -17,10 +17,12 @@ type ModuleWithLessons = Module & { lessons: LessonRow[] }
 type SubjectWithModules = Subject & { modules: ModuleWithLessons[] }
 type InstructorRow = BatchInstructor & { instructor: Pick<User, 'name'> }
 
+type LiveCourseTree = Course & { subjects: SubjectWithModules[] }
+
 type BatchEnrollmentRow = Enrollment & {
   batch: Batch & {
+    course: LiveCourseTree
     instructors: InstructorRow[]
-    subjects: SubjectWithModules[]
   }
   course: null
   lessonProgress: ProgressRow[]
@@ -37,10 +39,12 @@ export type EnrollmentWithRelations = BatchEnrollmentRow | CourseEnrollmentRow
 export interface EnrollmentListItemDto {
   id: string
   kind: EnrollmentKind
+  deliveryMode: DeliveryMode
   batch: {
     id: string
     title: string
     thumbnail: string | null
+    course: { id: string; title: string }
     instructors: { name: string }[]
   } | null
   course: {
@@ -83,13 +87,15 @@ export interface EnrollmentSubjectDto {
 export interface EnrollmentDetailDto {
   id: string
   kind: EnrollmentKind
+  deliveryMode: DeliveryMode
   status: EnrollmentStatus
   rollNumber: string | null
   progressPct: number
-  batch: { id: string; title: string } | null
+  batch: { id: string; title: string; courseId: string } | null
   course: { id: string; title: string } | null
   subjects?: EnrollmentSubjectDto[]
   modules?: EnrollmentModuleDto[]
+  grantedBatchIds?: string[]
 }
 
 export interface AdminEnrollmentRequestDto {
@@ -109,7 +115,7 @@ function progressMap(rows: ProgressRow[]): Map<string, boolean> {
   return new Map(rows.map((r) => [r.lessonId, r.completed]))
 }
 
-function flattenBatchLessons(subjects: SubjectWithModules[]): LessonRow[] {
+function flattenSubjectLessons(subjects: SubjectWithModules[]): LessonRow[] {
   return subjects.flatMap((s) => s.modules.flatMap((m) => m.lessons))
 }
 
@@ -134,15 +140,17 @@ export function toEnrollmentListItem(row: EnrollmentWithRelations): EnrollmentLi
   const completed = progressMap(row.lessonProgress)
 
   if (row.batchId && row.batch) {
-    const lessons = flattenBatchLessons(row.batch.subjects)
+    const lessons = flattenSubjectLessons(row.batch.course.subjects)
     const done = countCompleted(lessons, completed)
     return {
       id: row.id,
       kind: EnrollmentKind.BATCH,
+      deliveryMode: DeliveryMode.LIVE,
       batch: {
         id: row.batch.id,
         title: row.batch.title,
         thumbnail: row.batch.thumbnail,
+        course: { id: row.batch.course.id, title: row.batch.course.title },
         instructors: row.batch.instructors.map((i) => ({ name: i.instructor.name })),
       },
       course: null,
@@ -160,6 +168,7 @@ export function toEnrollmentListItem(row: EnrollmentWithRelations): EnrollmentLi
   return {
     id: row.id,
     kind: EnrollmentKind.COURSE,
+    deliveryMode: DeliveryMode.RECORDED,
     batch: null,
     course: {
       id: row.course!.id,
@@ -187,19 +196,27 @@ function toLessonDto(lesson: LessonRow, completed: Map<string, boolean>): Enroll
   }
 }
 
-export function toEnrollmentDetail(row: EnrollmentWithRelations): EnrollmentDetailDto {
+export function toEnrollmentDetail(
+  row: EnrollmentWithRelations,
+  grantedBatchIds: string[] = [],
+): EnrollmentDetailDto {
   const completed = progressMap(row.lessonProgress)
 
   if (row.batchId && row.batch) {
     return {
       id: row.id,
       kind: EnrollmentKind.BATCH,
+      deliveryMode: DeliveryMode.LIVE,
       status: row.status as EnrollmentStatus,
       rollNumber: row.rollNumber,
       progressPct: row.progressPct,
-      batch: { id: row.batch.id, title: row.batch.title },
+      batch: {
+        id: row.batch.id,
+        title: row.batch.title,
+        courseId: row.batch.courseId,
+      },
       course: null,
-      subjects: row.batch.subjects.map((subject) => ({
+      subjects: row.batch.course.subjects.map((subject) => ({
         id: subject.id,
         title: subject.title,
         order: subject.order,
@@ -210,12 +227,14 @@ export function toEnrollmentDetail(row: EnrollmentWithRelations): EnrollmentDeta
           lessons: mod.lessons.map((l) => toLessonDto(l, completed)),
         })),
       })),
+      grantedBatchIds,
     }
   }
 
   return {
     id: row.id,
     kind: EnrollmentKind.COURSE,
+    deliveryMode: DeliveryMode.RECORDED,
     status: row.status as EnrollmentStatus,
     rollNumber: row.rollNumber,
     progressPct: row.progressPct,
