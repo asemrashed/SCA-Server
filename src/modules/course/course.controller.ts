@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express'
 import { verifyAccessToken } from '../../lib/jwt.js'
 import type { Role } from '../../shared/enums.js'
+import * as batchCurriculumService from '../batch/batch.curriculum.service.js'
 import * as batchService from '../batch/batch.service.js'
 import * as courseService from './course.service.js'
 
@@ -91,6 +92,19 @@ export async function createBatchForCourse(
       courseId: param(req.params.courseId),
     })
     res.status(201).json({ data: batch })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function applyBatchCurriculum(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    await batchCurriculumService.applyCurriculumToBatches(param(req.params.courseId), req.body)
+    res.json({ data: { success: true } })
   } catch (err) {
     next(err)
   }

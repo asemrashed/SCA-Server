@@ -10,16 +10,74 @@ export const questionListQuerySchema = z.object({
   search: z.string().optional(),
   category: z.string().optional(),
   type: z.nativeEnum(QuestionType).optional(),
+  batchId: idSchema.optional(),
+  subjectId: idSchema.optional(),
+  moduleId: idSchema.optional(),
   sort: z.string().optional(),
 })
 
-export const createQuestionSchema = z.object({
-  stem: z.string().min(1).max(5000),
-  type: z.nativeEnum(QuestionType),
-  options: z.array(z.object({ key: z.string(), text: z.string() })).optional().nullable(),
-  correct: z.unknown(),
-  category: z.string().max(100).optional().nullable(),
-  marks: z.number().int().min(1).default(1),
+export const createQuestionSchema = z
+  .object({
+    stem: z.string().min(1).max(5000),
+    type: z.nativeEnum(QuestionType),
+    options: z.array(z.object({ key: z.string(), text: z.string() })).optional().nullable(),
+    correct: z.unknown().optional(),
+    category: z.string().max(100).optional().nullable(),
+    marks: z.number().int().min(1).default(1),
+    fileUrl: z.string().min(1).max(2048).optional().nullable(),
+    batchId: idSchema.optional().nullable(),
+    subjectId: idSchema.optional().nullable(),
+    moduleId: idSchema.optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === QuestionType.PDF) {
+      if (!data.fileUrl) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'PDF file is required',
+          path: ['fileUrl'],
+        })
+      }
+      if (!data.batchId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Batch is required',
+          path: ['batchId'],
+        })
+      }
+      if (!data.subjectId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Subject is required',
+          path: ['subjectId'],
+        })
+      }
+      return
+    }
+
+    if (data.correct === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Correct answer is required',
+        path: ['correct'],
+      })
+    }
+  })
+
+export const createPdfQuestionsBulkSchema = z.object({
+  batchId: idSchema,
+  subjectId: idSchema,
+  moduleId: idSchema.optional().nullable(),
+  questions: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(200),
+        fileUrl: z.string().min(1).max(2048),
+        marks: z.number().int().min(1).default(1).optional(),
+      }),
+    )
+    .min(1)
+    .max(50),
 })
 
 export const createExamSchema = z.object({

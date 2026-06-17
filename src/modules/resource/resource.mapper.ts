@@ -8,9 +8,11 @@ export interface ResourceDto {
   fileType: string | null
   category: ResourceCategory
   courseId: string
+  batchId: string | null
   subjectId: string | null
   moduleId: string | null
   lessonId: string | null
+  deadlineAt: string | null
   createdAt: string
 }
 
@@ -28,9 +30,11 @@ export function toResourceDto(row: Resource, role: Role): ResourceDto {
     fileType: row.fileType,
     category: row.category as ResourceCategory,
     courseId: row.courseId,
+    batchId: row.batchId,
     subjectId: row.subjectId,
     moduleId: row.moduleId,
     lessonId: row.lessonId,
+    deadlineAt: row.deadlineAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   }
 }

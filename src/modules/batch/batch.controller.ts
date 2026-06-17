@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express'
 import { verifyAccessToken } from '../../lib/jwt.js'
 import type { Role } from '../../shared/enums.js'
 import * as batchService from './batch.service.js'
+import * as batchCurriculumService from './batch.curriculum.service.js'
 
 function param(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value
@@ -94,6 +95,31 @@ export async function remove(req: Request, res: Response, next: NextFunction): P
   try {
     await batchService.deleteBatch(param(req.params.id))
     res.json({ data: { success: true } })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function getCurriculum(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const data = await batchCurriculumService.getBatchCurriculum(param(req.params.id))
+    res.json({ data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function replaceCurriculum(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const data = await batchCurriculumService.replaceBatchCurriculum(
+      param(req.params.id),
+      req.body.subjects,
+    )
+    res.json({ data })
   } catch (err) {
     next(err)
   }

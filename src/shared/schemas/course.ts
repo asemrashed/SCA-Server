@@ -7,6 +7,11 @@ export const lessonInputSchema = z.object({
   videoUrl: z.string().url().optional().nullable(),
   content: z.string().optional().nullable(),
   durationS: z.number().int().positive().optional().nullable(),
+  lectureDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'lectureDate must be YYYY-MM-DD')
+    .optional()
+    .nullable(),
   order: z.number().int().min(0).default(0),
   isPreview: z.boolean().default(false),
 })
@@ -32,7 +37,7 @@ const courseBaseSchema = z.object({
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase kebab-case'),
   description: z.string().max(5000).optional().nullable(),
   thumbnail: z.string().url().optional().nullable(),
-  category: z.string().max(100).optional().nullable(),
+  categoryId: z.string().cuid().optional().nullable(),
   priceMinor: z.number().int().min(0).default(0),
   isPublished: z.boolean().default(false),
 })
@@ -47,7 +52,6 @@ export const createCourseSchema = z.discriminatedUnion('deliveryMode', [
   courseBaseSchema
     .extend({
       deliveryMode: z.literal(DeliveryMode.LIVE),
-      subjects: z.array(subjectInputSchema).optional(),
     })
     .strict(),
 ])
@@ -63,14 +67,10 @@ export const updateCourseSchema = z
       .optional(),
     description: z.string().max(5000).optional().nullable(),
     thumbnail: z.string().url().optional().nullable(),
-    category: z.string().max(100).optional().nullable(),
+    categoryId: z.string().cuid().optional().nullable(),
     priceMinor: z.number().int().min(0).optional(),
     isPublished: z.boolean().optional(),
     modules: z.array(moduleInputSchema).optional(),
-    subjects: z.array(subjectInputSchema).optional(),
-  })
-  .refine((data) => !(data.modules && data.subjects), {
-    message: 'Provide modules (RECORDED) or subjects (LIVE), not both',
   })
 
 export const courseListQuerySchema = z.object({

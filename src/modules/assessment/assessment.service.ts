@@ -10,6 +10,7 @@ import {
 import type {
   createAssignmentSchema,
   createExamSchema,
+  createPdfQuestionsBulkSchema,
   createQuestionSchema,
   createSubmissionSchema,
   gradeSubmissionSchema,
@@ -34,6 +35,7 @@ import {
 
 type QuestionListQuery = z.infer<typeof questionListQuerySchema>
 type CreateQuestionInput = z.infer<typeof createQuestionSchema>
+type CreatePdfQuestionsBulkInput = z.infer<typeof createPdfQuestionsBulkSchema>
 type CreateExamInput = z.infer<typeof createExamSchema>
 type UpdateAttemptInput = z.infer<typeof updateAttemptSchema>
 type CreateAssignmentInput = z.infer<typeof createAssignmentSchema>
@@ -78,7 +80,7 @@ async function assertModuleLessonsComplete(
   const module = await prisma.module.findFirst({
     where: {
       id: moduleId,
-      OR: [{ courseId }, { subject: { courseId } }],
+      OR: [{ courseId }, { subject: { batch: { courseId } } }],
     },
     include: { lessons: { select: { id: true } } },
   })
@@ -170,10 +172,13 @@ function assertExamWindow(exam: { opensAt: Date | null; closesAt: Date | null })
 export async function listQuestions(
   query: QuestionListQuery,
 ): Promise<ApiListResponse<QuestionDto>> {
-  const { page, pageSize, search, category, type, sort } = query
+  const { page, pageSize, search, category, type, batchId, subjectId, moduleId, sort } = query
   const where: Prisma.QuestionWhereInput = {
     ...(category ? { category } : {}),
     ...(type ? { type } : {}),
+    ...(batchId ? { batchId } : {}),
+    ...(subjectId ? { subjectId } : {}),
+    ...(moduleId ? { moduleId } : {}),
     ...(search
       ? {
           OR: [
@@ -207,18 +212,84 @@ export async function listQuestions(
   }
 }
 
+async function validateQuestionPlacement(input: {
+  batchId?: string | null
+  subjectId?: string | null
+  moduleId?: string | null
+}): Promise<void> {
+  if (!input.batchId) return
+
+  const batch = await prisma.batch.findFirst({
+    where: { id: input.batchId, deletedAt: null },
+  })
+  if (!batch) {
+    throw notFound('Batch not found')
+  }
+
+  if (input.subjectId) {
+    const subject = await prisma.subject.findUnique({ where: { id: input.subjectId } })
+    if (!subject || subject.batchId !== input.batchId) {
+      throw validationError('Subject does not belong to this batch')
+    }
+  }
+
+  if (input.moduleId) {
+    const module = await prisma.module.findUnique({ where: { id: input.moduleId } })
+    if (!module) {
+      throw notFound('Module not found')
+    }
+    if (module.subjectId && input.subjectId && module.subjectId !== input.subjectId) {
+      throw validationError('Chapter does not belong to this subject')
+    }
+    if (module.subjectId && !input.subjectId) {
+      throw validationError('Subject is required when a chapter is selected')
+    }
+  }
+}
+
 export async function createQuestion(input: CreateQuestionInput): Promise<QuestionDto> {
+  await validateQuestionPlacement(input)
+
   const question = await prisma.question.create({
     data: {
       stem: input.stem,
       type: input.type,
       options: input.options ?? undefined,
-      correct: input.correct as Prisma.InputJsonValue,
+      correct: (input.type === QuestionType.PDF ? {} : input.correct) as Prisma.InputJsonValue,
       category: input.category ?? null,
       marks: input.marks,
+      fileUrl: input.fileUrl ?? null,
+      batchId: input.batchId ?? null,
+      subjectId: input.subjectId ?? null,
+      moduleId: input.moduleId ?? null,
     },
   })
   return toQuestionDto(question, true)
+}
+
+export async function createPdfQuestionsBulk(
+  input: CreatePdfQuestionsBulkInput,
+): Promise<{ data: QuestionDto[] }> {
+  await validateQuestionPlacement(input)
+
+  const rows = await prisma.$transaction(
+    input.questions.map((item) =>
+      prisma.question.create({
+        data: {
+          stem: item.title,
+          type: QuestionType.PDF,
+          correct: {},
+          marks: item.marks ?? 1,
+          fileUrl: item.fileUrl,
+          batchId: input.batchId,
+          subjectId: input.subjectId,
+          moduleId: input.moduleId ?? null,
+        },
+      }),
+    ),
+  )
+
+  return { data: rows.map((row) => toQuestionDto(row, true)) }
 }
 
 export async function listBatchExams(
@@ -287,7 +358,7 @@ export async function createExam(input: CreateExamInput): Promise<ExamDetailDto>
     const module = await prisma.module.findFirst({
       where: {
         id: input.moduleId,
-        OR: [{ courseId: input.courseId }, { subject: { courseId: input.courseId } }],
+        OR: [{ courseId: input.courseId }, { subject: { batch: { courseId: input.courseId } } }],
       },
     })
     if (!module) throw validationError('moduleId must belong to the course')
@@ -483,7 +554,7 @@ export async function createAssignment(
     const module = await prisma.module.findFirst({
       where: {
         id: input.moduleId,
-        OR: [{ courseId: input.courseId }, { subject: { courseId: input.courseId } }],
+        OR: [{ courseId: input.courseId }, { subject: { batch: { courseId: input.courseId } } }],
       },
     })
     if (!module) throw validationError('moduleId must belong to the course')

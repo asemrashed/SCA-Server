@@ -5,6 +5,9 @@ import { validate } from '../../middleware/validate.js'
 import { ADMIN_ROLES, SUPER_ADMIN_ROLES } from '../../shared/roles.js'
 import { createContentGrantSchema } from '../../shared/schemas/course.js'
 import { batchListQuerySchema, updateBatchSchema } from '../../shared/schemas/batch.js'
+import {
+  batchCurriculumSchema,
+} from '../../shared/schemas/batch-curriculum.js'
 import * as controller from './batch.controller.js'
 import { attachBatchLiveRoutes } from '../liveclass/liveclass.routes.js'
 
@@ -33,6 +36,15 @@ batchRouter.delete(
 )
 
 attachBatchLiveRoutes(batchRouter)
+
+batchRouter.get('/:id/curriculum', controller.getCurriculum)
+batchRouter.put(
+  '/:id/curriculum',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  validate(batchCurriculumSchema),
+  controller.replaceCurriculum,
+)
 
 batchRouter.get('/:idOrSlug', controller.getByIdOrSlug)
 batchRouter.patch(

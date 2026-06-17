@@ -4,8 +4,10 @@ import { prisma } from '../../config/db.js'
 import { conflict, forbidden, notFound, validationError } from '../../lib/errors.js'
 import { BatchStatus, DeliveryMode, EnrollmentStatus } from '../../shared/enums.js'
 import { createEnrollmentSchema, reviewEnrollmentSchema } from '../../shared/schemas/enrollment.js'
+import { loadSubjectsForBatchIds } from '../batch/batch.curriculum.service.js'
 import { getGrantedSourceBatchIds } from './enrollment.access.js'
 import {
+  mapSubjectsToEnrollmentDto,
   toEnrollmentDetail,
   toEnrollmentListItem,
   toAdminEnrollmentRequest,
@@ -22,16 +24,13 @@ const lessonOrder = { orderBy: { order: 'asc' as const } }
 
 const batchContentInclude = {
   instructors: { include: { instructor: { select: { name: true } } } },
-  course: {
+  course: { select: { id: true, title: true } },
+  subjects: {
+    orderBy: { order: 'asc' as const },
     include: {
-      subjects: {
+      modules: {
         orderBy: { order: 'asc' as const },
-        include: {
-          modules: {
-            orderBy: { order: 'asc' as const },
-            include: { lessons: lessonOrder },
-          },
-        },
+        include: { lessons: lessonOrder },
       },
     },
   },
@@ -67,7 +66,7 @@ function assertEnrollmentRow(row: {
 
 function allLessonIds(row: EnrollmentWithRelations): string[] {
   if (row.batchId && row.batch) {
-    return row.batch.course.subjects.flatMap((s) =>
+    return row.batch.subjects.flatMap((s) =>
       s.modules.flatMap((m) => m.lessons.map((l) => l.id)),
     )
   }
@@ -127,7 +126,17 @@ export async function getMyEnrollment(
   if (row.status !== EnrollmentStatus.ACTIVE && row.status !== EnrollmentStatus.COMPLETED) {
     throw forbidden('Enrollment is not active')
   }
-  return toEnrollmentDetail(row, row.batchId ? await getGrantedSourceBatchIds(row.batchId) : [])
+
+  const grantedBatchIds = row.batchId ? await getGrantedSourceBatchIds(row.batchId) : []
+  const grantedSubjects =
+    grantedBatchIds.length > 0
+      ? mapSubjectsToEnrollmentDto(
+          await loadSubjectsForBatchIds(grantedBatchIds),
+          new Map(row.lessonProgress.map((p) => [p.lessonId, p.completed])),
+        )
+      : []
+
+  return toEnrollmentDetail(row, grantedBatchIds, grantedSubjects)
 }
 
 async function handleExistingEnrollment(
@@ -226,7 +235,7 @@ export async function markLessonComplete(
 ): Promise<{ progressPct: number }> {
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
-    include: { module: true },
+    include: { module: { include: { subject: true } } },
   })
   if (!lesson) {
     throw notFound('Lesson not found')
@@ -243,17 +252,14 @@ export async function markLessonComplete(
         status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
       },
     })
-  } else if (module.subjectId) {
-    const subject = await prisma.subject.findUnique({ where: { id: module.subjectId } })
-    if (subject) {
-      enrollment = await prisma.enrollment.findFirst({
-        where: {
-          studentId,
-          batch: { courseId: subject.courseId },
-          status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
-        },
-      })
-    }
+  } else if (module.subjectId && module.subject) {
+    enrollment = await prisma.enrollment.findFirst({
+      where: {
+        studentId,
+        batchId: module.subject.batchId,
+        status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
+      },
+    })
   }
 
   if (!enrollment) {

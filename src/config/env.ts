@@ -17,6 +17,7 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v !== 'false' && v !== '0'),
+  ADMIN_WHATSAPP_PHONE: z.string().min(10).optional(),
   CLOUDINARY_CLOUD_NAME: z.string().default('mock_cloud_name'),
   CLOUDINARY_API_KEY: z.string().default('mock_api_key'),
   CLOUDINARY_API_SECRET: z.string().default('mock_api_secret'),
@@ -60,4 +61,9 @@ export function sslcommerzApiBase(): string {
   return env.SSLCOMMERZ_SANDBOX
     ? 'https://sandbox.sslcommerz.com'
     : 'https://securepay.sslcommerz.com'
+}
+
+/** Admin WhatsApp number for manual monthly fee requests (digits only, BD format). */
+export function adminWhatsappPhone(): string {
+  return env.ADMIN_WHATSAPP_PHONE ?? '01638149875'
 }

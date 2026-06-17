@@ -21,7 +21,12 @@ type CreateCourseInput = z.infer<typeof createCourseSchema>
 type UpdateCourseInput = z.infer<typeof updateCourseSchema>
 type CourseListQuery = z.infer<typeof courseListQuerySchema>
 
+const categorySelect = {
+  category: { select: { title: true, slug: true } },
+} satisfies Prisma.CourseInclude
+
 const recordedInclude = {
+  ...categorySelect,
   modules: {
     orderBy: { order: 'asc' as const },
     include: {
@@ -31,17 +36,7 @@ const recordedInclude = {
 } satisfies Prisma.CourseInclude
 
 const liveInclude = {
-  subjects: {
-    orderBy: { order: 'asc' as const },
-    include: {
-      modules: {
-        orderBy: { order: 'asc' as const },
-        include: {
-          lessons: { orderBy: { order: 'asc' as const } },
-        },
-      },
-    },
-  },
+  ...categorySelect,
   batches: {
     where: { deletedAt: null },
     orderBy: { startDate: 'asc' as const },
@@ -68,35 +63,19 @@ function canViewProtectedContent(role?: Role): boolean {
   return role !== undefined && isStaff(role)
 }
 
-type CurriculumPayload = {
-  modules?: unknown
-  subjects?: unknown
-}
-
 function assertCurriculumMatchesDeliveryMode(
   deliveryMode: DeliveryMode,
-  payload: CurriculumPayload,
+  payload: { modules?: unknown },
   action: 'create' | 'update',
 ): void {
   const verb = action === 'create' ? 'create' : 'update'
 
   if (deliveryMode === DeliveryMode.LIVE && payload.modules !== undefined) {
-    throw validationError(`LIVE courses use subjects, not top-level modules (${verb})`)
-  }
-  if (deliveryMode === DeliveryMode.RECORDED && payload.subjects !== undefined) {
-    throw validationError(`RECORDED courses use modules, not subjects (${verb})`)
+    throw validationError(`LIVE courses use batch-scoped subjects, not top-level modules (${verb})`)
   }
 }
 
-/** LIVE: subjects (+ nested modules). Remove stray top-level modules and subjects. */
-async function clearLiveCurriculum(courseId: string): Promise<void> {
-  await prisma.subject.deleteMany({ where: { courseId } })
-  await prisma.module.deleteMany({ where: { courseId } })
-}
-
-/** RECORDED: top-level modules. Remove stray subjects and modules. */
 async function clearRecordedCurriculum(courseId: string): Promise<void> {
-  await prisma.subject.deleteMany({ where: { courseId } })
   await prisma.module.deleteMany({ where: { courseId } })
 }
 
@@ -125,6 +104,11 @@ async function findCourseOrThrow(idOrSlug: string, role?: Role) {
   return full
 }
 
+function parseLectureDate(value: string | null | undefined): Date | null {
+  if (!value) return null
+  return new Date(`${value}T00:00:00.000Z`)
+}
+
 async function createRecordedModules(
   courseId: string,
   modules: NonNullable<Extract<CreateCourseInput, { deliveryMode: DeliveryMode.RECORDED }>['modules']>,
@@ -142,41 +126,11 @@ async function createRecordedModules(
           videoUrl: lesson.videoUrl ?? null,
           content: lesson.content ?? null,
           durationS: lesson.durationS ?? null,
+          lectureDate: parseLectureDate(lesson.lectureDate),
           order: lesson.order,
           isPreview: lesson.isPreview,
         })),
       })
-    }
-  }
-}
-
-async function createLiveSubjects(
-  courseId: string,
-  subjects: NonNullable<Extract<CreateCourseInput, { deliveryMode: DeliveryMode.LIVE }>['subjects']>,
-): Promise<void> {
-  for (const subject of subjects) {
-    const createdSubject = await prisma.subject.create({
-      data: { courseId, title: subject.title, order: subject.order },
-    })
-    if (!subject.modules?.length) continue
-    for (const mod of subject.modules) {
-      const createdModule = await prisma.module.create({
-        data: { subjectId: createdSubject.id, title: mod.title, order: mod.order },
-      })
-      if (mod.lessons?.length) {
-        await prisma.lesson.createMany({
-          data: mod.lessons.map((lesson) => ({
-            moduleId: createdModule.id,
-            title: lesson.title,
-            type: lesson.type,
-            videoUrl: lesson.videoUrl ?? null,
-            content: lesson.content ?? null,
-            durationS: lesson.durationS ?? null,
-            order: lesson.order,
-            isPreview: lesson.isPreview,
-          })),
-        })
-      }
     }
   }
 }
@@ -191,16 +145,6 @@ async function replaceRecordedModules(
   }
 }
 
-async function replaceLiveSubjects(
-  courseId: string,
-  subjects: NonNullable<UpdateCourseInput['subjects']>,
-): Promise<void> {
-  await clearLiveCurriculum(courseId)
-  if (subjects.length) {
-    await createLiveSubjects(courseId, subjects)
-  }
-}
-
 export async function listCourses(
   query: CourseListQuery,
   role?: Role,
@@ -209,13 +153,13 @@ export async function listCourses(
   const where: Prisma.CourseWhereInput = {
     deletedAt: null,
     ...(canViewProtectedContent(role) ? {} : { isPublished: true }),
-    ...(category ? { category } : {}),
+    ...(category ? { category: { slug: category, deletedAt: null } } : {}),
     ...(deliveryMode ? { deliveryMode } : {}),
     ...(search
       ? {
           OR: [
             { title: { contains: search, mode: 'insensitive' } },
-            { category: { contains: search, mode: 'insensitive' } },
+            { category: { title: { contains: search, mode: 'insensitive' } } },
           ],
         }
       : {}),
@@ -228,7 +172,10 @@ export async function listCourses(
       orderBy: parseSort(sort),
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: { _count: { select: { batches: true } } },
+      include: {
+        ...categorySelect,
+        _count: { select: { batches: true } },
+      },
     }),
   ])
 
@@ -247,14 +194,16 @@ export async function getCourseByIdOrSlug(
 }
 
 export async function createCourse(input: CreateCourseInput): Promise<CourseDetailDto> {
-  assertCurriculumMatchesDeliveryMode(input.deliveryMode, input, 'create')
+  if (input.deliveryMode === DeliveryMode.RECORDED) {
+    assertCurriculumMatchesDeliveryMode(input.deliveryMode, input, 'create')
+  }
 
   const existing = await prisma.course.findUnique({ where: { slug: input.slug } })
   if (existing) {
     throw conflict('A course with this slug already exists')
   }
 
-  const { deliveryMode, title, slug, description, thumbnail, category, priceMinor, isPublished } =
+  const { deliveryMode, title, slug, description, thumbnail, categoryId, priceMinor, isPublished } =
     input
 
   const course = await prisma.course.create({
@@ -264,7 +213,7 @@ export async function createCourse(input: CreateCourseInput): Promise<CourseDeta
       slug,
       description: description ?? null,
       thumbnail: thumbnail ?? null,
-      category: category ?? null,
+      categoryId: categoryId ?? null,
       priceMinor,
       isPublished,
     },
@@ -272,9 +221,6 @@ export async function createCourse(input: CreateCourseInput): Promise<CourseDeta
 
   if (deliveryMode === DeliveryMode.RECORDED && input.modules?.length) {
     await createRecordedModules(course.id, input.modules)
-  }
-  if (deliveryMode === DeliveryMode.LIVE && input.subjects?.length) {
-    await createLiveSubjects(course.id, input.subjects)
   }
 
   return getCourseByIdOrSlug(course.id, Role.ADMIN)
@@ -298,19 +244,15 @@ export async function updateCourse(
     }
   }
 
-  assertCurriculumMatchesDeliveryMode(existing.deliveryMode as DeliveryMode, input, 'update')
+  if (input.modules !== undefined) {
+    assertCurriculumMatchesDeliveryMode(existing.deliveryMode as DeliveryMode, input, 'update')
+  }
 
   if (input.modules !== undefined && existing.deliveryMode !== DeliveryMode.RECORDED) {
     throw validationError('Only RECORDED courses have modules')
   }
-  if (input.subjects !== undefined && existing.deliveryMode !== DeliveryMode.LIVE) {
-    throw validationError('Only LIVE courses have subjects')
-  }
-  if (input.modules !== undefined && input.subjects !== undefined) {
-    throw validationError('Provide modules (RECORDED) or subjects (LIVE), not both')
-  }
 
-  const { modules, subjects, ...courseData } = input
+  const { modules, ...courseData } = input
   await prisma.course.update({
     where: { id },
     data: courseData,
@@ -318,9 +260,6 @@ export async function updateCourse(
 
   if (modules !== undefined) {
     await replaceRecordedModules(id, modules)
-  }
-  if (subjects !== undefined) {
-    await replaceLiveSubjects(id, subjects)
   }
 
   return getCourseByIdOrSlug(id, Role.ADMIN)

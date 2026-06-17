@@ -39,6 +39,11 @@ import {
   paymentRouter,
 } from './modules/payment/payment.routes.js'
 import {
+  adminMonthlyPaymentRouter,
+  instructorMonthlyPaymentRouter,
+  meMonthlyPaymentRouter,
+} from './modules/monthly-payment/monthly-payment.routes.js'
+import {
   certificateRouter,
   meCertificateRouter,
 } from './modules/certificate/certificate.routes.js'
@@ -49,6 +54,7 @@ import {
   orderRouter,
   productRouter,
 } from './modules/shop/shop.routes.js'
+import { categoryRouter } from './modules/category/category.routes.js'
 
 export function createApp() {
   const app = express()
@@ -94,6 +100,7 @@ export function createApp() {
   api.use('/admin/enrollments', adminEnrollmentRouter)
   api.use('/admin/users', adminUserRouter)
   api.use('/me', meEnrollmentRouter)
+  api.use('/me', meMonthlyPaymentRouter)
   api.use('/resources', resourceRouter)
   api.use('/uploads', uploadRouter)
   api.use('/payments', paymentRouter)
@@ -102,9 +109,12 @@ export function createApp() {
   api.use('/me', meCertificateRouter)
   api.use('/certificates', certificateRouter)
   api.use('/products', productRouter)
+  api.use('/categories', categoryRouter)
   api.use('/orders', orderRouter)
   api.use('/me', meOrderRouter)
   api.use('/admin/orders', adminOrderRouter)
+  api.use('/admin/monthly-payments', adminMonthlyPaymentRouter)
+  api.use('/instructor/monthly-payments', instructorMonthlyPaymentRouter)
 
   app.use('/api', api)
 

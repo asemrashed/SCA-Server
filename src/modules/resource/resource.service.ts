@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client'
 import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { forbidden, notFound, validationError } from '../../lib/errors.js'
-import { ResourceCategory, Role } from '../../shared/enums.js'
+import { ResourceCategory, DeliveryMode, Role } from '../../shared/enums.js'
 import { isAdminStaff } from '../../shared/roles.js'
 import {
   createResourceSchema,
@@ -19,6 +19,48 @@ import { toResourceDto, type ResourceDto } from './resource.mapper.js'
 type CreateResourceInput = z.infer<typeof createResourceSchema>
 type UpdateResourceInput = z.infer<typeof updateResourceSchema>
 type ResourceListQuery = z.infer<typeof resourceListQuerySchema>
+
+const SUBJECT_REQUIRED_CATEGORIES = new Set<ResourceCategory>([
+  ResourceCategory.LECTURE_SHEET,
+  ResourceCategory.SOLUTION_PDF,
+  ResourceCategory.EXAM,
+  ResourceCategory.ASSIGNMENT,
+])
+
+const BATCH_SCOPED_CATEGORIES = new Set<ResourceCategory>([
+  ResourceCategory.LECTURE_SHEET,
+  ResourceCategory.SOLUTION_PDF,
+  ResourceCategory.NOTICE,
+  ResourceCategory.RESULT_SHEET,
+  ResourceCategory.EXAM,
+  ResourceCategory.ASSIGNMENT,
+])
+
+function assertCategoryPlacement(
+  course: { deliveryMode: DeliveryMode },
+  input: {
+    category: ResourceCategory
+    batchId?: string | null
+    subjectId?: string | null
+    deadlineAt?: Date | null
+  },
+): void {
+  if (course.deliveryMode === DeliveryMode.LIVE) {
+    if (BATCH_SCOPED_CATEGORIES.has(input.category) && !input.batchId) {
+      throw validationError('Batch is required for this resource type')
+    }
+    if (SUBJECT_REQUIRED_CATEGORIES.has(input.category) && !input.subjectId) {
+      throw validationError('Subject is required for this resource type')
+    }
+  }
+
+  if (
+    (input.category === ResourceCategory.EXAM || input.category === ResourceCategory.ASSIGNMENT) &&
+    !input.deadlineAt
+  ) {
+    throw validationError('Deadline is required for exams and assignments')
+  }
+}
 
 const PDF_ONLY_CATEGORIES = new Set<ResourceCategory>([
   ResourceCategory.LECTURE_SHEET,
@@ -78,6 +120,7 @@ async function assertInstructorOnCourse(
 
 async function validatePlacement(input: {
   courseId: string
+  batchId?: string | null
   subjectId?: string | null
   moduleId?: string | null
   lessonId?: string | null
@@ -89,17 +132,32 @@ async function validatePlacement(input: {
     throw notFound('Course not found')
   }
 
+  if (input.batchId) {
+    const batch = await prisma.batch.findFirst({
+      where: { id: input.batchId, deletedAt: null },
+    })
+    if (!batch || batch.courseId !== input.courseId) {
+      throw validationError('Batch does not belong to this course')
+    }
+  }
+
   if (input.subjectId) {
-    const subject = await prisma.subject.findUnique({ where: { id: input.subjectId } })
-    if (!subject || subject.courseId !== input.courseId) {
+    const subject = await prisma.subject.findUnique({
+      where: { id: input.subjectId },
+      include: { batch: { select: { courseId: true, id: true } } },
+    })
+    if (!subject || subject.batch.courseId !== input.courseId) {
       throw validationError('Subject does not belong to this course')
+    }
+    if (input.batchId && subject.batchId !== input.batchId) {
+      throw validationError('Subject does not belong to this batch')
     }
   }
 
   if (input.lessonId) {
     const lesson = await prisma.lesson.findUnique({
       where: { id: input.lessonId },
-      include: { module: { include: { subject: true } } },
+      include: { module: { include: { subject: { include: { batch: true } } } } },
     })
     if (!lesson) {
       throw notFound('Lesson not found')
@@ -107,7 +165,7 @@ async function validatePlacement(input: {
 
     const module = lesson.module
     const lessonCourseId =
-      module.courseId ?? module.subject?.courseId ?? null
+      module.courseId ?? module.subject?.batch.courseId ?? null
     if (lessonCourseId !== input.courseId) {
       throw validationError('Lesson does not belong to this course')
     }
@@ -116,13 +174,13 @@ async function validatePlacement(input: {
   if (input.moduleId) {
     const module = await prisma.module.findUnique({
       where: { id: input.moduleId },
-      include: { subject: true },
+      include: { subject: { include: { batch: true } } },
     })
     if (!module) {
       throw notFound('Module not found')
     }
 
-    const moduleCourseId = module.courseId ?? module.subject?.courseId ?? null
+    const moduleCourseId = module.courseId ?? module.subject?.batch.courseId ?? null
     if (moduleCourseId !== input.courseId) {
       throw validationError('Module does not belong to this course')
     }
@@ -146,6 +204,7 @@ export async function listResources(
 
   const where: Prisma.ResourceWhereInput = {
     courseId: query.courseId,
+    ...(query.batchId ? { batchId: query.batchId } : {}),
     ...(query.subjectId ? { subjectId: query.subjectId } : {}),
     ...(query.moduleId ? { moduleId: query.moduleId } : {}),
     ...(query.lessonId ? { lessonId: query.lessonId } : {}),
@@ -176,10 +235,26 @@ export async function createResource(
   role: Role,
   input: CreateResourceInput,
 ): Promise<ResourceDto> {
-  await validatePlacement(input)
-  await assertInstructorOnCourse(userId, role, input.courseId)
+  const course = await prisma.course.findFirst({
+    where: { id: input.courseId, deletedAt: null },
+  })
+  if (!course) {
+    throw notFound('Course not found')
+  }
 
   const category = input.category ?? ResourceCategory.GENERAL
+  assertCategoryPlacement(
+    { deliveryMode: course.deliveryMode as DeliveryMode },
+    {
+      category,
+      batchId: input.batchId,
+      subjectId: input.subjectId,
+      deadlineAt: input.deadlineAt,
+    },
+  )
+
+  await validatePlacement(input)
+  await assertInstructorOnCourse(userId, role, input.courseId)
   const row = await prisma.resource.create({
     data: {
       title: input.title,
@@ -187,9 +262,11 @@ export async function createResource(
       fileType: normalizeFileType(category, input.fileType),
       category,
       courseId: input.courseId,
+      batchId: input.batchId ?? null,
       subjectId: input.subjectId ?? null,
       moduleId: input.moduleId ?? null,
       lessonId: input.lessonId ?? null,
+      deadlineAt: input.deadlineAt ?? null,
     },
   })
 
@@ -205,12 +282,35 @@ export async function updateResource(
   const existing = await getResourceOrThrow(resourceId)
   await assertInstructorOnCourse(userId, role, existing.courseId)
 
+  const course = await prisma.course.findFirst({
+    where: { id: existing.courseId, deletedAt: null },
+  })
+  if (!course) {
+    throw notFound('Course not found')
+  }
+
   const category = input.category ?? (existing.category as ResourceCategory)
-  await validatePlacement({
-    courseId: existing.courseId,
+  const merged = {
+    category,
+    batchId: input.batchId !== undefined ? input.batchId : existing.batchId,
     subjectId: input.subjectId !== undefined ? input.subjectId : existing.subjectId,
     moduleId: input.moduleId !== undefined ? input.moduleId : existing.moduleId,
     lessonId: input.lessonId !== undefined ? input.lessonId : existing.lessonId,
+    deadlineAt: input.deadlineAt !== undefined ? input.deadlineAt : existing.deadlineAt,
+    fileType: input.fileType !== undefined ? input.fileType : existing.fileType,
+  }
+
+  assertCategoryPlacement(
+    { deliveryMode: course.deliveryMode as DeliveryMode },
+    merged,
+  )
+
+  await validatePlacement({
+    courseId: existing.courseId,
+    batchId: merged.batchId,
+    subjectId: merged.subjectId,
+    moduleId: merged.moduleId,
+    lessonId: merged.lessonId,
   })
 
   const row = await prisma.resource.update({
@@ -222,9 +322,11 @@ export async function updateResource(
         ? { fileType: normalizeFileType(category, input.fileType ?? existing.fileType) }
         : {}),
       ...(input.category !== undefined ? { category: input.category } : {}),
+      ...(input.batchId !== undefined ? { batchId: input.batchId } : {}),
       ...(input.subjectId !== undefined ? { subjectId: input.subjectId } : {}),
       ...(input.moduleId !== undefined ? { moduleId: input.moduleId } : {}),
       ...(input.lessonId !== undefined ? { lessonId: input.lessonId } : {}),
+      ...(input.deadlineAt !== undefined ? { deadlineAt: input.deadlineAt } : {}),
     },
   })
 

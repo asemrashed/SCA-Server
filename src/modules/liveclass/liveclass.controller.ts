@@ -73,9 +73,11 @@ export async function listBatchRecordings(
   next: NextFunction,
 ): Promise<void> {
   try {
+    const scope = req.query.scope === 'granted' ? 'granted' : 'own'
     const data = await liveclassService.listBatchRecordings(
       req.auth!.userId,
       param(req.params.id),
+      scope,
     )
     res.json({ data })
   } catch (err) {

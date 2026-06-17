@@ -61,6 +61,7 @@ enum QuestionType {
   TRUE_FALSE
   SHORT_ANSWER
   WRITTEN
+  PDF
 }
 
 enum ExamStatus {
@@ -84,6 +85,12 @@ enum PaymentStatus {
   PAID
   FAILED
   CANCELLED
+}
+
+enum MonthlyPaymentStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
 }
 
 enum ProductType {
@@ -122,6 +129,8 @@ model User {
   payments       Payment[]
   certificates   Certificate[]
   orders         Order[]
+  monthlyPaymentsAsStudent MonthlyPayment[] @relation("MonthlyPaymentStudent")
+  monthlyPaymentsReviewed  MonthlyPayment[] @relation("MonthlyPaymentReviewer")
 
   @@index([role])
   @@index([email])
@@ -139,13 +148,30 @@ model RefreshToken {
   @@index([userId])
 }
 
+model Category {
+  id         String    @id @default(cuid())
+  title      String
+  slug       String    @unique
+  shortIntro String?
+  image      String?
+  order      Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  courses Course[]
+
+  @@index([slug])
+}
+
 model Course {
   id            String       @id @default(cuid())
   title         String
   slug          String       @unique
   description   String?
   thumbnail     String?
-  category      String?
+  categoryId    String?
+  category      Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   deliveryMode  DeliveryMode
   priceMinor    Int          @default(0)
   isPublished   Boolean      @default(false)
@@ -153,7 +179,6 @@ model Course {
   updatedAt     DateTime     @updatedAt
   deletedAt     DateTime?
 
-  subjects     Subject[]
   modules      Module[]
   batches      Batch[]
   enrollments  Enrollment[]
@@ -161,14 +186,14 @@ model Course {
   assignments  Assignment[]
   resources    Resource[]
 
-  @@index([category])
+  @@index([categoryId])
   @@index([deliveryMode])
 }
 
 model Subject {
   id        String   @id @default(cuid())
-  courseId  String
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
   title     String
   order     Int      @default(0)
   createdAt DateTime @default(now())
@@ -176,8 +201,9 @@ model Subject {
 
   modules   Module[]
   resources Resource[]
+  questions Question[]
 
-  @@index([courseId])
+  @@index([batchId])
 }
 
 model Module {
@@ -195,6 +221,7 @@ model Module {
   exams       Exam[]
   assignments Assignment[]
   resources   Resource[]
+  questions   Question[]
 
   @@index([courseId])
   @@index([subjectId])
@@ -209,6 +236,7 @@ model Lesson {
   videoUrl  String?
   content   String?
   durationS Int?
+  lectureDate DateTime? @db.Date
   order     Int        @default(0)
   isPreview Boolean    @default(false)
   createdAt DateTime   @default(now())
@@ -238,12 +266,15 @@ model Batch {
   updatedAt            DateTime    @updatedAt
   deletedAt            DateTime?
 
+  subjects       Subject[]
   instructors    BatchInstructor[]
   enrollments    Enrollment[]
   liveSessions   LiveSession[]
   recordings     Recording[]
   grantsGiven    BatchContentGrant[] @relation("GrantingBatch")
   grantsReceived BatchContentGrant[] @relation("ReceivingBatch")
+  resources      Resource[]
+  questions      Question[]
 
   @@index([courseId])
   @@index([status])
@@ -288,6 +319,7 @@ model Enrollment {
 
   lessonProgress LessonProgress[]
   payments       Payment[]
+  monthlyPayments MonthlyPayment[]
   certificate    Certificate?
 
   @@unique([studentId, batchId])
@@ -322,23 +354,28 @@ enum ResourceCategory {
 }
 
 model Resource {
-  id        String           @id @default(cuid())
-  title     String
-  fileUrl   String
-  fileType  String?
-  category  ResourceCategory @default(GENERAL)
-  courseId  String
-  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  subjectId String?
-  subject   Subject?         @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  moduleId  String?
-  module    Module?          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  lessonId  String?
-  lesson    Lesson?          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  createdAt DateTime         @default(now())
+  id         String           @id @default(cuid())
+  title      String
+  fileUrl    String
+  fileType   String?
+  category   ResourceCategory @default(GENERAL)
+  courseId   String
+  course     Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batchId    String?
+  batch      Batch?           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  subjectId  String?
+  subject    Subject?         @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  moduleId   String?
+  module     Module?          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  lessonId   String?
+  lesson     Lesson?          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  deadlineAt DateTime?
+  createdAt  DateTime         @default(now())
 
   @@index([courseId])
   @@index([courseId, category])
+  @@index([batchId])
+  @@index([courseId, batchId, category])
   @@index([subjectId])
   @@index([moduleId])
   @@index([lessonId])
@@ -402,6 +439,13 @@ model Question {
   correct   Json
   category  String?
   marks     Int          @default(1)
+  fileUrl   String?
+  batchId   String?
+  batch     Batch?       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  subjectId String?
+  subject   Subject?     @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  moduleId  String?
+  module    Module?      @relation(fields: [moduleId], references: [id], onDelete: SetNull)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -409,6 +453,9 @@ model Question {
 
   @@index([category])
   @@index([type])
+  @@index([batchId])
+  @@index([subjectId])
+  @@index([moduleId])
 }
 
 model Exam {
@@ -584,4 +631,25 @@ model Certificate {
   issuedAt     DateTime   @default(now())
 
   @@index([studentId])
+}
+
+model MonthlyPayment {
+  id            String               @id @default(cuid())
+  enrollmentId  String
+  enrollment    Enrollment           @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       User                 @relation("MonthlyPaymentStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  billingMonth  String
+  amountMinor   Int?
+  status        MonthlyPaymentStatus @default(REQUESTED)
+  note          String?
+  requestedAt   DateTime             @default(now())
+  reviewedAt    DateTime?
+  reviewedById  String?
+  reviewedBy    User?                @relation("MonthlyPaymentReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([enrollmentId, billingMonth])
+  @@index([studentId])
+  @@index([status])
+  @@index([billingMonth])
 }

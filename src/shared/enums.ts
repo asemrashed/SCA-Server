@@ -58,6 +58,7 @@ export enum QuestionType {
   TRUE_FALSE = 'TRUE_FALSE',
   SHORT_ANSWER = 'SHORT_ANSWER',
   WRITTEN = 'WRITTEN',
+  PDF = 'PDF',
 }
 
 export enum ExamStatus {
@@ -95,6 +96,12 @@ export enum PaymentStatus {
   PAID = 'PAID',
   FAILED = 'FAILED',
   CANCELLED = 'CANCELLED',
+}
+
+export enum MonthlyPaymentStatus {
+  REQUESTED = 'REQUESTED',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
 }
 
 export enum ProductType {

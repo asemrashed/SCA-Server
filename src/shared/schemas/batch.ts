@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { BatchStatus } from '../enums.js'
 
-/** Cohort under a live course — curriculum lives on the parent course. */
+/** Cohort under a live course — curriculum (subjects) lives on the batch. */
 export const createBatchSchema = z.object({
   courseId: z.string().cuid(),
   title: z.string().min(1).max(200),

@@ -14,7 +14,7 @@ import type {
   markAttendanceSchema,
   updateSessionSchema,
 } from '../../shared/schemas/liveclass.js'
-import { getAccessibleBatchIds } from '../enrollment/enrollment.access.js'
+import { getGrantedSourceBatchIds } from '../enrollment/enrollment.access.js'
 import {
   toAttendanceSummary,
   toLiveSessionDto,
@@ -94,11 +94,8 @@ export async function listBatchSessions(
   }
   await assertBatchSessionAccess(userId, role, batchId)
 
-  const batchIds =
-    role === Role.STUDENT ? await getAccessibleBatchIds(batchId) : [batchId]
-
   const sessions = await prisma.liveSession.findMany({
-    where: { batchId: { in: batchIds } },
+    where: { batchId },
     include: sessionInclude,
     orderBy: { scheduledAt: 'desc' },
   })
@@ -187,6 +184,7 @@ export async function updateSession(
 export async function listBatchRecordings(
   studentId: string,
   batchId: string,
+  scope: 'own' | 'granted' = 'own',
 ): Promise<RecordingDto[]> {
   const batch = await prisma.batch.findFirst({ where: { id: batchId, deletedAt: null } })
   if (!batch) {
@@ -194,7 +192,12 @@ export async function listBatchRecordings(
   }
   await assertBatchEnrolled(studentId, batchId)
 
-  const batchIds = await getAccessibleBatchIds(batchId)
+  const batchIds =
+    scope === 'granted' ? await getGrantedSourceBatchIds(batchId) : [batchId]
+  if (!batchIds.length) {
+    return []
+  }
+
   const recordings = await prisma.recording.findMany({
     where: { batchId: { in: batchIds } },
     orderBy: { createdAt: 'desc' },

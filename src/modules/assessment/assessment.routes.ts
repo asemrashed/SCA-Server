@@ -7,6 +7,7 @@ import { ADMIN_ROLES } from '../../shared/roles.js'
 import {
   createAssignmentSchema,
   createExamSchema,
+  createPdfQuestionsBulkSchema,
   createQuestionSchema,
   createSubmissionSchema,
   gradeSubmissionSchema,
@@ -40,6 +41,13 @@ questionRouter.post(
   requireRole(...staffRoles),
   validate(createQuestionSchema),
   controller.createQuestion,
+)
+questionRouter.post(
+  '/pdf-bulk',
+  authenticate,
+  requireRole(...staffRoles),
+  validate(createPdfQuestionsBulkSchema),
+  controller.createPdfQuestionsBulk,
 )
 
 batchExamRouter.get('/', authenticate, controller.listBatchExams)

@@ -17,6 +17,10 @@ export interface QuestionDto {
   correct?: unknown
   category: string | null
   marks: number
+  fileUrl: string | null
+  batchId: string | null
+  subjectId: string | null
+  moduleId: string | null
   createdAt: string
   updatedAt: string
 }
@@ -115,6 +119,10 @@ export function toQuestionDto(question: QuestionRow, includeCorrect: boolean): Q
     options: parseOptions(question.options),
     category: question.category,
     marks: question.marks,
+    fileUrl: question.fileUrl,
+    batchId: question.batchId,
+    subjectId: question.subjectId,
+    moduleId: question.moduleId,
     createdAt: question.createdAt.toISOString(),
     updatedAt: question.updatedAt.toISOString(),
   }

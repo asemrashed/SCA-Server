@@ -17,11 +17,10 @@ type ModuleWithLessons = Module & { lessons: LessonRow[] }
 type SubjectWithModules = Subject & { modules: ModuleWithLessons[] }
 type InstructorRow = BatchInstructor & { instructor: Pick<User, 'name'> }
 
-type LiveCourseTree = Course & { subjects: SubjectWithModules[] }
-
 type BatchEnrollmentRow = Enrollment & {
   batch: Batch & {
-    course: LiveCourseTree
+    course: Pick<Course, 'id' | 'title'>
+    subjects: SubjectWithModules[]
     instructors: InstructorRow[]
   }
   course: null
@@ -66,6 +65,7 @@ export interface EnrollmentLessonDto {
   type: LessonType
   videoUrl: string | null
   durationS: number | null
+  lectureDate: string | null
   order: number
   completed: boolean
 }
@@ -94,6 +94,7 @@ export interface EnrollmentDetailDto {
   batch: { id: string; title: string; courseId: string } | null
   course: { id: string; title: string } | null
   subjects?: EnrollmentSubjectDto[]
+  grantedSubjects?: EnrollmentSubjectDto[]
   modules?: EnrollmentModuleDto[]
   grantedBatchIds?: string[]
 }
@@ -136,11 +137,45 @@ function countCompleted(lessons: LessonRow[], completed: Map<string, boolean>): 
   return lessons.filter((l) => completed.get(l.id)).length
 }
 
+function formatLectureDate(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
+function toLessonDto(lesson: LessonRow, completed: Map<string, boolean>): EnrollmentLessonDto {
+  return {
+    id: lesson.id,
+    title: lesson.title,
+    type: lesson.type as LessonType,
+    videoUrl: lesson.videoUrl,
+    durationS: lesson.durationS,
+    lectureDate: lesson.lectureDate ? formatLectureDate(lesson.lectureDate) : null,
+    order: lesson.order,
+    completed: completed.get(lesson.id) ?? false,
+  }
+}
+
+export function mapSubjectsToEnrollmentDto(
+  subjects: SubjectWithModules[],
+  completed: Map<string, boolean>,
+): EnrollmentSubjectDto[] {
+  return subjects.map((subject) => ({
+    id: subject.id,
+    title: subject.title,
+    order: subject.order,
+    modules: subject.modules.map((mod) => ({
+      id: mod.id,
+      title: mod.title,
+      order: mod.order,
+      lessons: mod.lessons.map((l) => toLessonDto(l, completed)),
+    })),
+  }))
+}
+
 export function toEnrollmentListItem(row: EnrollmentWithRelations): EnrollmentListItemDto {
   const completed = progressMap(row.lessonProgress)
 
   if (row.batchId && row.batch) {
-    const lessons = flattenSubjectLessons(row.batch.course.subjects)
+    const lessons = flattenSubjectLessons(row.batch.subjects)
     const done = countCompleted(lessons, completed)
     return {
       id: row.id,
@@ -184,21 +219,10 @@ export function toEnrollmentListItem(row: EnrollmentWithRelations): EnrollmentLi
   }
 }
 
-function toLessonDto(lesson: LessonRow, completed: Map<string, boolean>): EnrollmentLessonDto {
-  return {
-    id: lesson.id,
-    title: lesson.title,
-    type: lesson.type as LessonType,
-    videoUrl: lesson.videoUrl,
-    durationS: lesson.durationS,
-    order: lesson.order,
-    completed: completed.get(lesson.id) ?? false,
-  }
-}
-
 export function toEnrollmentDetail(
   row: EnrollmentWithRelations,
   grantedBatchIds: string[] = [],
+  grantedSubjects: EnrollmentSubjectDto[] = [],
 ): EnrollmentDetailDto {
   const completed = progressMap(row.lessonProgress)
 
@@ -216,18 +240,9 @@ export function toEnrollmentDetail(
         courseId: row.batch.courseId,
       },
       course: null,
-      subjects: row.batch.course.subjects.map((subject) => ({
-        id: subject.id,
-        title: subject.title,
-        order: subject.order,
-        modules: subject.modules.map((mod) => ({
-          id: mod.id,
-          title: mod.title,
-          order: mod.order,
-          lessons: mod.lessons.map((l) => toLessonDto(l, completed)),
-        })),
-      })),
-      grantedBatchIds,
+      subjects: mapSubjectsToEnrollmentDto(row.batch.subjects, completed),
+      grantedSubjects: grantedSubjects.length ? grantedSubjects : undefined,
+      grantedBatchIds: grantedBatchIds.length ? grantedBatchIds : undefined,
     }
   }
 

@@ -1,13 +1,13 @@
-import type { Batch, Course, Lesson, Module, Subject } from '@prisma/client'
+import type { Batch, Course, Lesson, Module } from '@prisma/client'
 import type { DeliveryMode, LessonType } from '../../shared/enums.js'
+import { DeliveryMode as DeliveryModeEnum } from '../../shared/enums.js'
 
 type LessonRow = Lesson
 type ModuleWithLessons = Module & { lessons: LessonRow[] }
-type SubjectWithModules = Subject & { modules: ModuleWithLessons[] }
 type BatchSummary = Pick<Batch, 'id' | 'title' | 'slug' | 'status' | 'priceMinor' | 'startDate'>
 type CourseRow = Course & {
+  category?: { title: string; slug: string } | null
   modules?: ModuleWithLessons[]
-  subjects?: SubjectWithModules[]
   batches?: BatchSummary[]
 }
 
@@ -18,6 +18,8 @@ export interface CourseListItem {
   deliveryMode: DeliveryMode
   thumbnail: string | null
   category: string | null
+  categorySlug: string | null
+  categoryId: string | null
   priceMinor: number
   isPublished: boolean
   batchCount?: number
@@ -28,6 +30,7 @@ export interface CourseLessonDto {
   title: string
   type: LessonType
   durationS: number | null
+  lectureDate: string | null
   order: number
   isPreview: boolean
   videoUrl?: string | null
@@ -65,6 +68,8 @@ export interface CourseDetailDto {
   description: string | null
   thumbnail: string | null
   category: string | null
+  categorySlug: string | null
+  categoryId: string | null
   priceMinor: number
   isPublished: boolean
   modules?: CourseModuleDto[]
@@ -73,7 +78,10 @@ export interface CourseDetailDto {
 }
 
 export function toCourseListItem(
-  course: Course & { _count?: { batches: number } },
+  course: Course & {
+    category?: { title: string; slug: string } | null
+    _count?: { batches: number }
+  },
 ): CourseListItem {
   return {
     id: course.id,
@@ -81,7 +89,9 @@ export function toCourseListItem(
     slug: course.slug,
     deliveryMode: course.deliveryMode as DeliveryMode,
     thumbnail: course.thumbnail,
-    category: course.category,
+    category: course.category?.title ?? null,
+    categorySlug: course.category?.slug ?? null,
+    categoryId: course.categoryId,
     priceMinor: course.priceMinor,
     isPublished: course.isPublished,
     ...('_count' in course && course._count
@@ -90,12 +100,17 @@ export function toCourseListItem(
   }
 }
 
+function formatLectureDate(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
 function toLessonDto(lesson: LessonRow, includeProtectedFields: boolean): CourseLessonDto {
   const base: CourseLessonDto = {
     id: lesson.id,
     title: lesson.title,
     type: lesson.type as LessonType,
     durationS: lesson.durationS,
+    lectureDate: lesson.lectureDate ? formatLectureDate(lesson.lectureDate) : null,
     order: lesson.order,
     isPreview: lesson.isPreview,
   }
@@ -135,20 +150,16 @@ export function toCourseDetail(
     deliveryMode: course.deliveryMode as DeliveryMode,
     description: course.description,
     thumbnail: course.thumbnail,
-    category: course.category,
+    category: course.category?.title ?? null,
+    categorySlug: course.category?.slug ?? null,
+    categoryId: course.categoryId,
     priceMinor: course.priceMinor,
     isPublished: course.isPublished,
   }
 
-  if (course.subjects) {
+  if (course.deliveryMode === DeliveryModeEnum.LIVE) {
     return {
       ...base,
-      subjects: course.subjects.map((subject) => ({
-        id: subject.id,
-        title: subject.title,
-        order: subject.order,
-        modules: subject.modules.map((mod) => toModuleDto(mod, includeProtectedFields)),
-      })),
       ...(course.batches
         ? {
             batches: course.batches.map((b) => ({

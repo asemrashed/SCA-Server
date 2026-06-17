@@ -24,6 +24,19 @@ export async function createQuestion(req: Request, res: Response, next: NextFunc
   }
 }
 
+export async function createPdfQuestionsBulk(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const result = await assessmentService.createPdfQuestionsBulk(req.body)
+    res.status(201).json(result)
+  } catch (err) {
+    next(err)
+  }
+}
+
 export async function listBatchExams(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const result = await assessmentService.listBatchExams(

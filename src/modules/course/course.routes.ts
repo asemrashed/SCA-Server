@@ -3,6 +3,7 @@ import { authenticate } from '../../middleware/auth.js'
 import { requireRole } from '../../middleware/rbac.js'
 import { validate } from '../../middleware/validate.js'
 import { createBatchBodySchema } from '../../shared/schemas/batch.js'
+import { applyBatchCurriculumSchema } from '../../shared/schemas/batch-curriculum.js'
 import { ADMIN_ROLES, SUPER_ADMIN_ROLES } from '../../shared/roles.js'
 import {
   courseListQuerySchema,
@@ -23,6 +24,13 @@ courseRouter.post(
   requireRole(...ADMIN_ROLES),
   validate(createBatchBodySchema),
   controller.createBatchForCourse,
+)
+courseRouter.put(
+  '/:courseId/batch-curriculum',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  validate(applyBatchCurriculumSchema),
+  controller.applyBatchCurriculum,
 )
 
 attachCourseLiveRoutes(courseRouter)
