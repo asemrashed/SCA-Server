@@ -174,7 +174,11 @@ export async function listCourses(
       take: pageSize,
       include: {
         ...categorySelect,
-        _count: { select: { batches: true } },
+        _count: { select: { batches: true, enrollments: true } },
+        batches: {
+          where: { deletedAt: null },
+          select: { _count: { select: { enrollments: true } } },
+        },
       },
     }),
   ])
@@ -203,7 +207,7 @@ export async function createCourse(input: CreateCourseInput): Promise<CourseDeta
     throw conflict('A course with this slug already exists')
   }
 
-  const { deliveryMode, title, slug, description, thumbnail, categoryId, priceMinor, isPublished } =
+  const { deliveryMode, title, slug, description, thumbnail, categoryId, priceMinor, faq, isPublished } =
     input
 
   const course = await prisma.course.create({
@@ -214,7 +218,8 @@ export async function createCourse(input: CreateCourseInput): Promise<CourseDeta
       description: description ?? null,
       thumbnail: thumbnail ?? null,
       categoryId: categoryId ?? null,
-      priceMinor,
+      priceMinor: deliveryMode === DeliveryMode.LIVE ? 0 : priceMinor,
+      ...(faq !== undefined ? { faq: faq as Prisma.InputJsonValue } : {}),
       isPublished,
     },
   })
@@ -252,10 +257,17 @@ export async function updateCourse(
     throw validationError('Only RECORDED courses have modules')
   }
 
-  const { modules, ...courseData } = input
+  const { modules, faq, ...courseData } = input
+  const updateData: Prisma.CourseUpdateInput = {
+    ...courseData,
+    ...(faq !== undefined ? { faq: faq as Prisma.InputJsonValue } : {}),
+    ...(existing.deliveryMode === DeliveryMode.LIVE && courseData.priceMinor !== undefined
+      ? { priceMinor: 0 }
+      : {}),
+  }
   await prisma.course.update({
     where: { id },
-    data: courseData,
+    data: updateData,
   })
 
   if (modules !== undefined) {

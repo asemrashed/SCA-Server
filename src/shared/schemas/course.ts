@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { DeliveryMode, LessonType } from '../enums.js'
 
+export const faqItemSchema = z.object({
+  question: z.string().min(1).max(500),
+  answer: z.string().min(1).max(5000),
+})
+
 export const lessonInputSchema = z.object({
   title: z.string().min(1).max(200),
   type: z.nativeEnum(LessonType).default(LessonType.RECORDED),
@@ -35,10 +40,11 @@ const courseBaseSchema = z.object({
     .min(1)
     .max(120)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase kebab-case'),
-  description: z.string().max(5000).optional().nullable(),
+  description: z.string().max(50000).optional().nullable(),
   thumbnail: z.string().url().optional().nullable(),
   categoryId: z.string().cuid().optional().nullable(),
   priceMinor: z.number().int().min(0).default(0),
+  faq: z.array(faqItemSchema).optional().nullable(),
   isPublished: z.boolean().default(false),
 })
 
@@ -65,10 +71,11 @@ export const updateCourseSchema = z
       .max(120)
       .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase kebab-case')
       .optional(),
-    description: z.string().max(5000).optional().nullable(),
+    description: z.string().max(50000).optional().nullable(),
     thumbnail: z.string().url().optional().nullable(),
     categoryId: z.string().cuid().optional().nullable(),
     priceMinor: z.number().int().min(0).optional(),
+    faq: z.array(faqItemSchema).optional().nullable(),
     isPublished: z.boolean().optional(),
     modules: z.array(moduleInputSchema).optional(),
   })

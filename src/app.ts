@@ -19,6 +19,7 @@ import {
 import { resourceRouter } from './modules/resource/resource.routes.js'
 import {
   meLiveclassRouter,
+  liveClassSchedulesRouter,
   recordingsRouter,
   sessionsRouter,
 } from './modules/liveclass/liveclass.routes.js'
@@ -95,6 +96,7 @@ export function createApp() {
   api.use('/assignments', assignmentRouter)
   api.use('/submissions', submissionRouter)
   api.use('/sessions', sessionsRouter)
+  api.use('/live-classes', liveClassSchedulesRouter)
   api.use('/recordings', recordingsRouter)
   api.use('/enrollments', enrollmentRouter)
   api.use('/admin/enrollments', adminEnrollmentRouter)

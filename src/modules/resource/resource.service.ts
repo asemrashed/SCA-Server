@@ -32,6 +32,8 @@ const BATCH_SCOPED_CATEGORIES = new Set<ResourceCategory>([
   ResourceCategory.SOLUTION_PDF,
   ResourceCategory.NOTICE,
   ResourceCategory.RESULT_SHEET,
+  ResourceCategory.MATH_SUGGESTION,
+  ResourceCategory.THEORY_SUGGESTION,
   ResourceCategory.EXAM,
   ResourceCategory.ASSIGNMENT,
 ])
@@ -67,6 +69,8 @@ const PDF_ONLY_CATEGORIES = new Set<ResourceCategory>([
   ResourceCategory.SOLUTION_PDF,
   ResourceCategory.NOTICE,
   ResourceCategory.RESULT_SHEET,
+  ResourceCategory.MATH_SUGGESTION,
+  ResourceCategory.THEORY_SUGGESTION,
   ResourceCategory.EXAM,
   ResourceCategory.ASSIGNMENT,
 ])

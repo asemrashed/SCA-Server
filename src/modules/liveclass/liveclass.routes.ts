@@ -7,12 +7,15 @@ import { ADMIN_ROLES } from '../../shared/roles.js'
 import {
   createRecordingSchema,
   createSessionSchema,
+  createLiveClassScheduleSchema,
   markAttendanceSchema,
+  updateLiveClassScheduleSchema,
   updateSessionSchema,
 } from '../../shared/schemas/liveclass.js'
 import * as controller from './liveclass.controller.js'
 
 export const sessionsRouter = Router()
+export const liveClassSchedulesRouter = Router()
 export const recordingsRouter = Router()
 export const meLiveclassRouter = Router()
 
@@ -32,12 +35,42 @@ sessionsRouter.patch(
   controller.updateSession,
 )
 
+sessionsRouter.delete(
+  '/:id',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  controller.deleteSession,
+)
+
 sessionsRouter.post(
   '/:id/attendance',
   authenticate,
   requireRole(...ADMIN_ROLES),
   validate(markAttendanceSchema),
   controller.markAttendance,
+)
+
+liveClassSchedulesRouter.post(
+  '/',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  validate(createLiveClassScheduleSchema),
+  controller.createLiveClassSchedule,
+)
+
+liveClassSchedulesRouter.patch(
+  '/:id',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  validate(updateLiveClassScheduleSchema),
+  controller.updateLiveClassSchedule,
+)
+
+liveClassSchedulesRouter.delete(
+  '/:id',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  controller.deleteLiveClassSchedule,
 )
 
 recordingsRouter.post(
@@ -63,6 +96,11 @@ export function attachBatchLiveRoutes(batchRouter: Router): void {
     controller.listBatchSessions,
   )
   batchRouter.get(
+    '/:id/live-classes',
+    authenticate,
+    controller.listBatchLiveClassSchedules,
+  )
+  batchRouter.get(
     '/:id/recordings',
     authenticate,
     requireRole(Role.STUDENT),
@@ -75,6 +113,11 @@ export function attachCourseLiveRoutes(courseRouter: Router): void {
     '/:id/sessions',
     authenticate,
     controller.listCourseSessions,
+  )
+  courseRouter.get(
+    '/:id/live-classes',
+    authenticate,
+    controller.listCourseLiveClassSchedules,
   )
   courseRouter.get(
     '/:id/recordings',

@@ -23,6 +23,12 @@ export interface CourseListItem {
   priceMinor: number
   isPublished: boolean
   batchCount?: number
+  studentCount?: number
+}
+
+export interface CourseFaqItem {
+  question: string
+  answer: string
 }
 
 export interface CourseLessonDto {
@@ -71,18 +77,44 @@ export interface CourseDetailDto {
   categorySlug: string | null
   categoryId: string | null
   priceMinor: number
+  faq: CourseFaqItem[]
   isPublished: boolean
   modules?: CourseModuleDto[]
   subjects?: CourseSubjectDto[]
   batches?: CourseBatchSummaryDto[]
 }
 
+export function parseFaq(value: unknown): CourseFaqItem[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter(
+      (item): item is CourseFaqItem =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as CourseFaqItem).question === 'string' &&
+        typeof (item as CourseFaqItem).answer === 'string',
+    )
+    .map((item) => ({
+      question: item.question.trim(),
+      answer: item.answer.trim(),
+    }))
+    .filter((item) => item.question && item.answer)
+}
+
 export function toCourseListItem(
   course: Course & {
     category?: { title: string; slug: string } | null
-    _count?: { batches: number }
+    _count?: { batches: number; enrollments: number }
+    batches?: { _count: { enrollments: number } }[]
   },
 ): CourseListItem {
+  const batchEnrollmentTotal =
+    course.batches?.reduce((sum, batch) => sum + (batch._count?.enrollments ?? 0), 0) ?? 0
+  const studentCount =
+    course.deliveryMode === DeliveryModeEnum.LIVE
+      ? batchEnrollmentTotal
+      : (course._count?.enrollments ?? 0)
+
   return {
     id: course.id,
     title: course.title,
@@ -94,9 +126,8 @@ export function toCourseListItem(
     categoryId: course.categoryId,
     priceMinor: course.priceMinor,
     isPublished: course.isPublished,
-    ...('_count' in course && course._count
-      ? { batchCount: course._count.batches }
-      : {}),
+    ...('_count' in course && course._count ? { batchCount: course._count.batches } : {}),
+    studentCount,
   }
 }
 
@@ -154,6 +185,7 @@ export function toCourseDetail(
     categorySlug: course.category?.slug ?? null,
     categoryId: course.categoryId,
     priceMinor: course.priceMinor,
+    faq: parseFaq(course.faq),
     isPublished: course.isPublished,
   }
 

@@ -4,6 +4,7 @@ import { forbidden, notFound, validationError } from '../../lib/errors.js'
 import {
   AttendanceStatus,
   EnrollmentStatus,
+  LiveClassType,
   Role,
   SessionStatus,
 } from '../../shared/enums.js'
@@ -11,15 +12,21 @@ import { isAdminStaff, isStaff } from '../../shared/roles.js'
 import type {
   createRecordingSchema,
   createSessionSchema,
+  createLiveClassScheduleSchema,
   markAttendanceSchema,
+  updateLiveClassScheduleSchema,
   updateSessionSchema,
 } from '../../shared/schemas/liveclass.js'
 import { getGrantedSourceBatchIds } from '../enrollment/enrollment.access.js'
 import {
   toAttendanceSummary,
+  mergeLiveClassList,
+  toLiveClassScheduleDto,
   toLiveSessionDto,
   toRecordingDto,
+  parseScheduleDate,
   type AttendanceSummaryDto,
+  type LiveClassScheduleDto,
   type LiveSessionDto,
   type RecordingDto,
 } from './liveclass.mapper.js'
@@ -28,6 +35,8 @@ type CreateSessionInput = z.infer<typeof createSessionSchema>
 type UpdateSessionInput = z.infer<typeof updateSessionSchema>
 type CreateRecordingInput = z.infer<typeof createRecordingSchema>
 type MarkAttendanceInput = z.infer<typeof markAttendanceSchema>
+type CreateLiveClassScheduleInput = z.infer<typeof createLiveClassScheduleSchema>
+type UpdateLiveClassScheduleInput = z.infer<typeof updateLiveClassScheduleSchema>
 
 const sessionInclude = { recording: true } as const
 
@@ -343,4 +352,146 @@ export async function getMyAttendance(studentId: string): Promise<AttendanceSumm
         session: { ...row.session, batch: row.session.batch! },
       }),
     )
+}
+
+async function getLiveClassScheduleOrThrow(scheduleId: string) {
+  const schedule = await prisma.liveClassSchedule.findUnique({
+    where: { id: scheduleId },
+  })
+  if (!schedule) {
+    throw notFound('Live class schedule not found')
+  }
+  return schedule
+}
+
+export async function listBatchLiveClassSchedules(
+  userId: string,
+  role: Role,
+  batchId: string,
+): Promise<LiveClassScheduleDto[]> {
+  const batch = await prisma.batch.findFirst({ where: { id: batchId, deletedAt: null } })
+  if (!batch) {
+    throw notFound('Batch not found')
+  }
+  await assertBatchSessionAccess(userId, role, batchId)
+
+  const schedules = await prisma.liveClassSchedule.findMany({
+    where: { batchId },
+  })
+  const sessions = await prisma.liveSession.findMany({
+    where: { batchId, status: { not: SessionStatus.CANCELLED } },
+  })
+  return mergeLiveClassList(schedules, sessions)
+}
+
+export async function listCourseLiveClassSchedules(
+  userId: string,
+  role: Role,
+  courseId: string,
+): Promise<LiveClassScheduleDto[]> {
+  const batch = await prisma.batch.findFirst({
+    where: { courseId, deletedAt: null },
+    orderBy: { startDate: 'desc' },
+  })
+  if (!batch) {
+    return []
+  }
+  return listBatchLiveClassSchedules(userId, role, batch.id)
+}
+
+export async function createLiveClassSchedule(
+  userId: string,
+  role: Role,
+  input: CreateLiveClassScheduleInput,
+): Promise<LiveClassScheduleDto> {
+  const batch = await prisma.batch.findFirst({ where: { id: input.batchId, deletedAt: null } })
+  if (!batch) {
+    throw notFound('Batch not found')
+  }
+  await assertCanManageBatch(userId, role, input.batchId)
+
+  const schedule = await prisma.liveClassSchedule.create({
+    data: {
+      batchId: input.batchId,
+      type: input.type,
+      subject: input.subject,
+      daysOfWeek:
+        input.type === LiveClassType.RECURRING
+          ? [...(input.daysOfWeek ?? [])].sort((a, b) => a - b)
+          : [],
+      scheduledDate:
+        input.type === LiveClassType.ONE_TIME && input.scheduledDate
+          ? parseScheduleDate(input.scheduledDate)
+          : null,
+      startTime: input.startTime,
+      endTime: input.endTime ?? null,
+      passcode: input.passcode ?? null,
+      joinUrl: input.joinUrl,
+      order: input.order ?? 0,
+    },
+  })
+  return toLiveClassScheduleDto(schedule)
+}
+
+export async function updateLiveClassSchedule(
+  userId: string,
+  role: Role,
+  scheduleId: string,
+  input: UpdateLiveClassScheduleInput,
+): Promise<LiveClassScheduleDto> {
+  const existing = await getLiveClassScheduleOrThrow(scheduleId)
+  await assertCanManageBatch(userId, role, existing.batchId)
+
+  const type = (input.type ?? existing.type) as LiveClassType
+
+  const schedule = await prisma.liveClassSchedule.update({
+    where: { id: scheduleId },
+    data: {
+      ...(input.type !== undefined ? { type: input.type } : {}),
+      ...(input.subject !== undefined ? { subject: input.subject } : {}),
+      ...(input.startTime !== undefined ? { startTime: input.startTime } : {}),
+      ...(input.endTime !== undefined ? { endTime: input.endTime } : {}),
+      ...(input.passcode !== undefined ? { passcode: input.passcode } : {}),
+      ...(input.joinUrl !== undefined ? { joinUrl: input.joinUrl } : {}),
+      ...(input.order !== undefined ? { order: input.order } : {}),
+      ...(type === LiveClassType.RECURRING
+        ? {
+            daysOfWeek:
+              input.daysOfWeek !== undefined
+                ? [...input.daysOfWeek].sort((a, b) => a - b)
+                : undefined,
+            scheduledDate: input.type === LiveClassType.RECURRING ? null : undefined,
+          }
+        : {
+            daysOfWeek: input.type === LiveClassType.ONE_TIME ? [] : undefined,
+            scheduledDate:
+              input.scheduledDate !== undefined && input.scheduledDate !== null
+                ? parseScheduleDate(input.scheduledDate)
+                : input.scheduledDate === null
+                  ? null
+                  : undefined,
+          }),
+    },
+  })
+  return toLiveClassScheduleDto(schedule)
+}
+
+export async function deleteLiveClassSchedule(
+  userId: string,
+  role: Role,
+  scheduleId: string,
+): Promise<void> {
+  const existing = await getLiveClassScheduleOrThrow(scheduleId)
+  await assertCanManageBatch(userId, role, existing.batchId)
+  await prisma.liveClassSchedule.delete({ where: { id: scheduleId } })
+}
+
+export async function deleteSession(
+  userId: string,
+  role: Role,
+  sessionId: string,
+): Promise<void> {
+  const session = await getSessionOrThrow(sessionId)
+  await assertCanManageBatch(userId, role, session.batchId)
+  await prisma.liveSession.delete({ where: { id: sessionId } })
 }

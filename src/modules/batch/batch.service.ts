@@ -25,7 +25,14 @@ type CreateContentGrantInput = z.infer<typeof createContentGrantSchema>
 
 const batchInclude = {
   course: {
-    select: { id: true, title: true, slug: true, deliveryMode: true },
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      deliveryMode: true,
+      description: true,
+      faq: true,
+    },
   },
   instructors: {
     include: {
@@ -109,10 +116,19 @@ export async function listBatches(
   role?: Role,
   instructorUserId?: string,
 ): Promise<ApiListResponse<BatchListItem>> {
-  const { page, pageSize, search, status, courseId, sort } = query
+  const { page, pageSize, search, status, courseId, categoryId, year, sort } = query
   const where: Prisma.BatchWhereInput = {
     deletedAt: null,
     ...(courseId ? { courseId } : {}),
+    ...(categoryId ? { course: { categoryId, deletedAt: null } } : {}),
+    ...(year
+      ? {
+          startDate: {
+            gte: new Date(`${year}-01-01T00:00:00.000Z`),
+            lt: new Date(`${year + 1}-01-01T00:00:00.000Z`),
+          },
+        }
+      : {}),
     ...(role === Role.INSTRUCTOR && instructorUserId
       ? { instructors: { some: { instructorId: instructorUserId } } }
       : {}),
@@ -123,7 +139,11 @@ export async function listBatches(
       : { status: status ?? { in: PUBLIC_STATUSES } }),
     ...(search
       ? {
-          OR: [{ title: { contains: search, mode: 'insensitive' } }],
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { slug: { contains: search, mode: 'insensitive' } },
+            { course: { title: { contains: search, mode: 'insensitive' } } },
+          ],
         }
       : {}),
   }
@@ -135,6 +155,17 @@ export async function listBatches(
       orderBy: parseSort(sort),
       skip: (page - 1) * pageSize,
       take: pageSize,
+      include: {
+        course: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            deliveryMode: true,
+            category: { select: { title: true } },
+          },
+        },
+      },
     }),
   ])
 

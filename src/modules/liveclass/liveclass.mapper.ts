@@ -1,5 +1,5 @@
-import type { Attendance, LiveSession, Recording } from '@prisma/client'
-import { SessionStatus } from '../../shared/enums.js'
+import type { Attendance, LiveClassSchedule, LiveSession, Recording } from '@prisma/client'
+import { LiveClassType, SessionStatus } from '../../shared/enums.js'
 
 type SessionWithRecording = LiveSession & {
   recording: Recording | null
@@ -91,4 +91,98 @@ export function toAttendanceSummary(
     status: row.status,
     markedAt: row.markedAt.toISOString(),
   }
+}
+
+export interface LiveClassScheduleDto {
+  id: string
+  batchId: string
+  type: LiveClassType
+  subject: string
+  daysOfWeek: number[]
+  scheduledDate: string | null
+  startTime: string
+  endTime: string | null
+  passcode: string | null
+  joinUrl: string
+  order: number
+  createdAt: string
+  updatedAt: string
+  /** Set when this row is backed by a legacy LiveSession record */
+  sessionId: string | null
+}
+
+export function formatDateOnly(date: Date): string {
+  const y = date.getUTCFullYear()
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(date.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+export function parseScheduleDate(value: Date | string): Date {
+  const str = typeof value === 'string' ? value.slice(0, 10) : formatDateOnly(value)
+  const [y, m, d] = str.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d))
+}
+
+export function toLiveClassScheduleDto(schedule: LiveClassSchedule): LiveClassScheduleDto {
+  return {
+    id: schedule.id,
+    batchId: schedule.batchId,
+    type: schedule.type as LiveClassType,
+    subject: schedule.subject,
+    daysOfWeek: schedule.daysOfWeek,
+    scheduledDate: schedule.scheduledDate ? formatDateOnly(schedule.scheduledDate) : null,
+    startTime: schedule.startTime,
+    endTime: schedule.endTime,
+    passcode: schedule.passcode,
+    joinUrl: schedule.joinUrl,
+    order: schedule.order,
+    createdAt: schedule.createdAt.toISOString(),
+    updatedAt: schedule.updatedAt.toISOString(),
+    sessionId: null,
+  }
+}
+
+export function liveSessionToScheduleDto(session: LiveSession): LiveClassScheduleDto {
+  const iso = session.scheduledAt.toISOString()
+  return {
+    id: session.id,
+    batchId: session.batchId,
+    type: LiveClassType.ONE_TIME,
+    subject: session.title,
+    daysOfWeek: [],
+    scheduledDate: iso.slice(0, 10),
+    startTime: iso.slice(11, 16),
+    endTime: null,
+    passcode: null,
+    joinUrl: session.joinUrl ?? '',
+    order: 10_000,
+    createdAt: session.createdAt.toISOString(),
+    updatedAt: session.updatedAt.toISOString(),
+    sessionId: session.id,
+  }
+}
+
+function sortLiveClassScheduleDtos(items: LiveClassScheduleDto[]): LiveClassScheduleDto[] {
+  return [...items].sort((a, b) => {
+    if (a.type !== b.type) {
+      return a.type === LiveClassType.RECURRING ? -1 : 1
+    }
+    if (a.type === LiveClassType.ONE_TIME && a.scheduledDate && b.scheduledDate) {
+      const dateCmp = a.scheduledDate.localeCompare(b.scheduledDate)
+      if (dateCmp !== 0) return dateCmp
+      return a.startTime.localeCompare(b.startTime)
+    }
+    if (a.order !== b.order) return a.order - b.order
+    return a.subject.localeCompare(b.subject)
+  })
+}
+
+export function mergeLiveClassList(
+  schedules: LiveClassSchedule[],
+  sessions: LiveSession[],
+): LiveClassScheduleDto[] {
+  const scheduleDtos = schedules.map(toLiveClassScheduleDto)
+  const sessionDtos = sessions.map(liveSessionToScheduleDto)
+  return sortLiveClassScheduleDtos([...scheduleDtos, ...sessionDtos])
 }

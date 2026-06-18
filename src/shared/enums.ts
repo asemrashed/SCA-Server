@@ -79,6 +79,11 @@ export enum SessionStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export enum LiveClassType {
+  RECURRING = 'RECURRING',
+  ONE_TIME = 'ONE_TIME',
+}
+
 export enum AttendanceStatus {
   PRESENT = 'PRESENT',
   ABSENT = 'ABSENT',
@@ -123,6 +128,8 @@ export enum ResourceCategory {
   SOLUTION_PDF = 'SOLUTION_PDF',
   NOTICE = 'NOTICE',
   RESULT_SHEET = 'RESULT_SHEET',
+  MATH_SUGGESTION = 'MATH_SUGGESTION',
+  THEORY_SUGGESTION = 'THEORY_SUGGESTION',
   EXAM = 'EXAM',
   ASSIGNMENT = 'ASSIGNMENT',
 }

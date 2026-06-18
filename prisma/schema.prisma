@@ -49,6 +49,11 @@ enum SessionStatus {
   CANCELLED
 }
 
+enum LiveClassType {
+  RECURRING
+  ONE_TIME
+}
+
 enum AttendanceStatus {
   PRESENT
   ABSENT
@@ -174,6 +179,7 @@ model Course {
   category      Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   deliveryMode  DeliveryMode
   priceMinor    Int          @default(0)
+  faq           Json?
   isPublished   Boolean      @default(false)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -269,7 +275,8 @@ model Batch {
   subjects       Subject[]
   instructors    BatchInstructor[]
   enrollments    Enrollment[]
-  liveSessions   LiveSession[]
+  liveSessions        LiveSession[]
+  liveClassSchedules  LiveClassSchedule[]
   recordings     Recording[]
   grantsGiven    BatchContentGrant[] @relation("GrantingBatch")
   grantsReceived BatchContentGrant[] @relation("ReceivingBatch")
@@ -349,6 +356,8 @@ enum ResourceCategory {
   SOLUTION_PDF
   NOTICE
   RESULT_SHEET
+  MATH_SUGGESTION
+  THEORY_SUGGESTION
   EXAM
   ASSIGNMENT
 }
@@ -399,6 +408,26 @@ model LiveSession {
 
   @@index([batchId])
   @@index([scheduledAt])
+}
+
+model LiveClassSchedule {
+  id            String        @id @default(cuid())
+  batchId       String
+  batch         Batch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  type          LiveClassType @default(RECURRING)
+  subject       String
+  daysOfWeek    Int[]         @default([])
+  scheduledDate DateTime?     @db.Date
+  startTime     String
+  endTime       String?
+  passcode      String?
+  joinUrl       String
+  order         Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([batchId])
+  @@index([scheduledDate])
 }
 
 model Recording {

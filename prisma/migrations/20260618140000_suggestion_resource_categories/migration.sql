@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "ResourceCategory" ADD VALUE 'MATH_SUGGESTION';
+ALTER TYPE "ResourceCategory" ADD VALUE 'THEORY_SUGGESTION';
