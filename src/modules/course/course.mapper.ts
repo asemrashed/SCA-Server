@@ -4,11 +4,14 @@ import { DeliveryMode as DeliveryModeEnum } from '../../shared/enums.js'
 
 type LessonRow = Lesson
 type ModuleWithLessons = Module & { lessons: LessonRow[] }
-type BatchSummary = Pick<Batch, 'id' | 'title' | 'slug' | 'status' | 'priceMinor' | 'startDate'>
+type BatchSummary = Pick<Batch, 'id' | 'title' | 'slug' | 'status' | 'priceMinor' | 'startDate'> & {
+  _count?: { enrollments: number }
+}
 type CourseRow = Course & {
   category?: { title: string; slug: string } | null
   modules?: ModuleWithLessons[]
   batches?: BatchSummary[]
+  _count?: { enrollments: number }
 }
 
 export interface CourseListItem {
@@ -82,6 +85,7 @@ export interface CourseDetailDto {
   modules?: CourseModuleDto[]
   subjects?: CourseSubjectDto[]
   batches?: CourseBatchSummaryDto[]
+  studentCount?: number
 }
 
 export function parseFaq(value: unknown): CourseFaqItem[] {
@@ -174,6 +178,13 @@ export function toCourseDetail(
   course: CourseRow,
   includeProtectedFields: boolean,
 ): CourseDetailDto {
+  const batchEnrollmentTotal =
+    course.batches?.reduce((sum, batch) => sum + (batch._count?.enrollments ?? 0), 0) ?? 0
+  const studentCount =
+    course.deliveryMode === DeliveryModeEnum.LIVE
+      ? batchEnrollmentTotal
+      : (course._count?.enrollments ?? 0)
+
   const base = {
     id: course.id,
     title: course.title,
@@ -187,6 +198,7 @@ export function toCourseDetail(
     priceMinor: course.priceMinor,
     faq: parseFaq(course.faq),
     isPublished: course.isPublished,
+    studentCount,
   }
 
   if (course.deliveryMode === DeliveryModeEnum.LIVE) {

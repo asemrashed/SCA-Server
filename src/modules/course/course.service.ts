@@ -47,6 +47,7 @@ const liveInclude = {
       status: true,
       priceMinor: true,
       startDate: true,
+      _count: { select: { enrollments: true } },
     },
   },
 } satisfies Prisma.CourseInclude
@@ -93,7 +94,10 @@ async function findCourseOrThrow(idOrSlug: string, role?: Role) {
   const include = course.deliveryMode === DeliveryMode.LIVE ? liveInclude : recordedInclude
   const full = await prisma.course.findUnique({
     where: { id: course.id },
-    include,
+    include: {
+      ...include,
+      _count: { select: { enrollments: true } },
+    } as any,
   })
   if (!full) {
     throw notFound('Course not found')
