@@ -1,13 +1,15 @@
 import { z } from 'zod'
 import { OrderStatus, ProductType } from '../enums.js'
 
+const productSlugSchema = z
+  .string()
+  .min(1)
+  .max(120)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase kebab-case')
+
 export const createProductSchema = z.object({
   title: z.string().min(1).max(200),
-  slug: z
-    .string()
-    .min(1)
-    .max(120)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase kebab-case'),
+  slug: productSlugSchema.optional(),
   description: z.string().max(5000).optional().nullable(),
   thumbnail: z.string().url().optional().nullable(),
   type: z.nativeEnum(ProductType).default(ProductType.BOOK),
@@ -15,9 +17,12 @@ export const createProductSchema = z.object({
   stock: z.number().int().min(0).optional().nullable(),
   isPublished: z.boolean().default(false),
   digitalUrl: z.string().url().optional().nullable(),
+  freePreviewPages: z.number().min(0).max(100).default(0.5),
 })
 
-export const updateProductSchema = createProductSchema.partial()
+export const updateProductSchema = createProductSchema.partial().extend({
+  slug: productSlugSchema.optional(),
+})
 
 export const productListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

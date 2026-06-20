@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client'
 import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { conflict, notFound, validationError } from '../../lib/errors.js'
+import { generateUniqueSlug, slugifyTitle } from '../../lib/slug.js'
 import { BatchStatus, DeliveryMode, Role } from '../../shared/enums.js'
 import { isAdminStaff } from '../../shared/roles.js'
 import { createContentGrantSchema } from '../../shared/schemas/course.js'
@@ -200,19 +201,32 @@ export async function getBatchByIdOrSlug(
 export async function createBatch(input: CreateBatchInput): Promise<BatchDetailDto> {
   await validateLiveCourse(input.courseId)
 
-  const existing = await prisma.batch.findUnique({ where: { slug: input.slug } })
-  if (existing) {
-    throw conflict('A batch with this slug already exists')
+  const titleTaken = await prisma.batch.findFirst({
+    where: {
+      deletedAt: null,
+      courseId: input.courseId,
+      title: { equals: input.title, mode: 'insensitive' },
+    },
+  })
+  if (titleTaken) {
+    throw conflict('A batch with this title already exists in this course')
   }
 
-  const { instructorIds, ...batchData } = input
+  const slug =
+    input.slug ??
+    (await generateUniqueSlug(slugifyTitle(input.title), async (candidate) => {
+      const existing = await prisma.batch.findUnique({ where: { slug: candidate } })
+      return existing !== null
+    }))
+
+  const { instructorIds, slug: _slug, ...batchData } = input
 
   if (instructorIds?.length) {
     await validateInstructorIds(instructorIds)
   }
 
   const batch = await prisma.batch.create({
-    data: batchData,
+    data: { ...batchData, slug },
   })
 
   if (instructorIds?.length) {
@@ -228,6 +242,20 @@ export async function updateBatch(id: string, input: UpdateBatchInput): Promise<
   })
   if (!existing) {
     throw notFound('Batch not found')
+  }
+
+  if (input.title && input.title.toLowerCase() !== existing.title.toLowerCase()) {
+    const titleTaken = await prisma.batch.findFirst({
+      where: {
+        deletedAt: null,
+        courseId: existing.courseId,
+        title: { equals: input.title, mode: 'insensitive' },
+        id: { not: id },
+      },
+    })
+    if (titleTaken) {
+      throw conflict('A batch with this title already exists in this course')
+    }
   }
 
   if (input.slug && input.slug !== existing.slug) {

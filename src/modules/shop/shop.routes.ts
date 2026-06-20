@@ -19,6 +19,8 @@ export const meOrderRouter = Router()
 export const adminOrderRouter = Router()
 
 productRouter.get('/', validate(productListQuerySchema, 'query'), controller.listProducts)
+productRouter.get('/:idOrSlug/digital-access', controller.getProductDigitalAccess)
+productRouter.get('/:idOrSlug/stream', controller.streamProduct)
 productRouter.get('/:idOrSlug', controller.getProduct)
 productRouter.post(
   '/',

@@ -10,6 +10,7 @@ export const questionListQuerySchema = z.object({
   search: z.string().optional(),
   category: z.string().optional(),
   type: z.nativeEnum(QuestionType).optional(),
+  courseId: idSchema.optional(),
   batchId: idSchema.optional(),
   subjectId: idSchema.optional(),
   moduleId: idSchema.optional(),

@@ -1,19 +1,26 @@
 import { z } from 'zod'
 import { BatchStatus } from '../enums.js'
 
+const batchSlugSchema = z
+  .string()
+  .min(1)
+  .max(120)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase kebab-case')
+
+const optionalDateField = z.preprocess(
+  (val) => (val === '' || val === null || val === undefined ? null : val),
+  z.coerce.date().nullable().optional(),
+)
+
 const batchFieldsSchema = z.object({
   title: z.string().min(1).max(200),
-  slug: z
-    .string()
-    .min(1)
-    .max(120)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase kebab-case'),
+  slug: batchSlugSchema.optional(),
   status: z.nativeEnum(BatchStatus),
   priceMinor: z.number().int().min(0),
   capacity: z.number().int().positive().optional().nullable(),
-  registrationDeadline: z.coerce.date().optional().nullable(),
-  startDate: z.coerce.date().optional().nullable(),
-  endDate: z.coerce.date().optional().nullable(),
+  registrationDeadline: optionalDateField,
+  startDate: optionalDateField,
+  endDate: optionalDateField,
   thumbnail: z.string().url().optional().nullable(),
   instructorIds: z.array(z.string().cuid()).optional(),
 })
@@ -29,7 +36,9 @@ export const createBatchSchema = batchFieldsSchema.extend({
 export const createBatchBodySchema = createBatchSchema.omit({ courseId: true })
 
 /** Partial update — no field defaults so omitted keys are not overwritten. */
-export const updateBatchSchema = batchFieldsSchema.partial()
+export const updateBatchSchema = batchFieldsSchema.partial().extend({
+  slug: batchSlugSchema.optional(),
+})
 
 export const batchListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

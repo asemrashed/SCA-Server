@@ -12,6 +12,12 @@ import type {
   ListMonthlyPaymentsQuery,
   ReviewMonthlyPaymentInput,
 } from '../../shared/schemas/monthly-payment.js'
+import {
+  currentBillingMonth,
+  isEnrollmentPaymentBlocked,
+  isPastPaymentDeadline,
+  paymentDeadlineIso,
+} from './monthly-payment.utils.js'
 
 export interface MonthlyPaymentStudentDto {
   id: string
@@ -56,10 +62,24 @@ export interface EnrollmentPaymentHistoryItem {
 export interface EnrollmentPaymentHistoryDto {
   enrollment: MonthlyPaymentEnrollmentDto
   currentBillingMonth: string
+  paymentDeadline: string
+  isPastDeadline: boolean
+  isAccessBlocked: boolean
+  isCurrentMonthPaid: boolean
   canRequestCurrentMonth: boolean
   currentMonthRequest: MonthlyPaymentDto | null
   whatsappUrl: string
   history: EnrollmentPaymentHistoryItem[]
+}
+
+export interface UnpaidStudentDto {
+  billingMonth: string
+  paymentDeadline: string
+  isPastDeadline: boolean
+  isAccessBlocked: boolean
+  student: MonthlyPaymentStudentDto
+  enrollment: MonthlyPaymentEnrollmentDto
+  currentMonthRequest: MonthlyPaymentDto | null
 }
 
 const enrollmentSelect = {
@@ -88,13 +108,6 @@ const monthlyPaymentInclude = {
 type MonthlyPaymentRow = Prisma.MonthlyPaymentGetPayload<{
   include: typeof monthlyPaymentInclude
 }>
-
-function currentBillingMonth(): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  return `${year}-${month}`
-}
 
 function formatBillingMonthLabel(billingMonth: string): string {
   const [year, month] = billingMonth.split('-')
@@ -272,9 +285,17 @@ export async function getEnrollmentPaymentHistory(
   const canRequestCurrentMonth =
     !currentRequest || currentRequest.status === MonthlyPaymentStatus.REJECTED
 
+  const isCurrentMonthPaid = currentRequest?.status === MonthlyPaymentStatus.APPROVED
+  const isPastDeadline = isPastPaymentDeadline(undefined, billingMonth)
+  const isAccessBlocked = await isEnrollmentPaymentBlocked(enrollmentId, enrollment.batchId)
+
   return {
     enrollment: enrollmentDto,
     currentBillingMonth: billingMonth,
+    paymentDeadline: paymentDeadlineIso(billingMonth),
+    isPastDeadline,
+    isAccessBlocked,
+    isCurrentMonthPaid,
     canRequestCurrentMonth,
     currentMonthRequest: currentRequest ? toMonthlyPaymentDto(currentRequest) : null,
     whatsappUrl: whatsappUrlForRequest(student.name, enrollmentDto, billingMonth),
@@ -464,6 +485,109 @@ export async function listInstructorPaymentHistory(
     },
     instructorId,
   )
+}
+
+function buildUnpaidEnrollmentWhere(
+  query: ListMonthlyPaymentsQuery,
+  paidEnrollmentIds: string[],
+): Prisma.EnrollmentWhereInput {
+  const where: Prisma.EnrollmentWhereInput = {
+    status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
+    batchId: { not: null },
+    id: { notIn: paidEnrollmentIds },
+  }
+
+  if (query.batchId) {
+    where.batchId = query.batchId
+  } else if (query.courseId) {
+    where.batch = { courseId: query.courseId }
+  }
+
+  if (query.search) {
+    const term = query.search.trim()
+    where.AND = [
+      {
+        OR: [
+          { student: { name: { contains: term, mode: 'insensitive' } } },
+          { student: { phone: { contains: term } } },
+          { rollNumber: { contains: term, mode: 'insensitive' } },
+          { id: term },
+          { student: { id: term } },
+        ],
+      },
+    ]
+  }
+
+  return where
+}
+
+export async function listUnpaidStudents(
+  query: ListMonthlyPaymentsQuery,
+): Promise<{ data: UnpaidStudentDto[]; meta: { total: number; page: number; pageSize: number } }> {
+  const billingMonth = currentBillingMonth()
+  const deadline = paymentDeadlineIso(billingMonth)
+  const pastDeadline = isPastPaymentDeadline(undefined, billingMonth)
+  const skip = (query.page - 1) * query.pageSize
+
+  const approvedRows = await prisma.monthlyPayment.findMany({
+    where: { billingMonth, status: MonthlyPaymentStatus.APPROVED },
+    select: { enrollmentId: true },
+  })
+  const paidEnrollmentIds = approvedRows.map((row) => row.enrollmentId)
+  const where = buildUnpaidEnrollmentWhere(query, paidEnrollmentIds)
+
+  const [enrollments, total] = await Promise.all([
+    prisma.enrollment.findMany({
+      where,
+      select: {
+        ...enrollmentSelect,
+        student: { select: { id: true, name: true, phone: true } },
+      },
+      orderBy: [{ enrolledAt: 'desc' }],
+      skip,
+      take: query.pageSize,
+    }),
+    prisma.enrollment.count({ where }),
+  ])
+
+  const enrollmentIds = enrollments.map((row) => row.id)
+  const currentRequests = enrollmentIds.length
+    ? await prisma.monthlyPayment.findMany({
+        where: { enrollmentId: { in: enrollmentIds }, billingMonth },
+        include: monthlyPaymentInclude,
+      })
+    : []
+  const requestByEnrollmentId = new Map(
+    currentRequests.map((row) => [row.enrollmentId, row]),
+  )
+
+  const data: UnpaidStudentDto[] = await Promise.all(
+    enrollments.map(async (row) => {
+      const enrollmentDto = toEnrollmentDto(row)
+      const currentRequest = requestByEnrollmentId.get(row.id)
+      const isAccessBlocked = await isEnrollmentPaymentBlocked(row.id, row.batchId)
+
+      return {
+        billingMonth,
+        paymentDeadline: deadline,
+        isPastDeadline: pastDeadline,
+        isAccessBlocked,
+        student: {
+          id: row.student.id,
+          name: row.student.name,
+          phone: row.student.phone,
+          rollNumber: row.rollNumber,
+        },
+        enrollment: enrollmentDto,
+        currentMonthRequest: currentRequest ? toMonthlyPaymentDto(currentRequest) : null,
+      }
+    }),
+  )
+
+  return {
+    data,
+    meta: { total, page: query.page, pageSize: query.pageSize },
+  }
 }
 
 export async function assertInstructorCanAccessBatch(

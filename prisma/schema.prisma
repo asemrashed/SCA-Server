@@ -98,6 +98,12 @@ enum MonthlyPaymentStatus {
   REJECTED
 }
 
+enum ReviewStatus {
+  PENDING
+  ACTIVE
+  HIDDEN
+}
+
 enum ProductType {
   BOOK
   NOTES
@@ -136,6 +142,8 @@ model User {
   orders         Order[]
   monthlyPaymentsAsStudent MonthlyPayment[] @relation("MonthlyPaymentStudent")
   monthlyPaymentsReviewed  MonthlyPayment[] @relation("MonthlyPaymentReviewer")
+  reviews                  Review[]
+  reviewsModerated         Review[]         @relation("ReviewModerator")
 
   @@index([role])
   @@index([email])
@@ -191,6 +199,7 @@ model Course {
   exams        Exam[]
   assignments  Assignment[]
   resources    Resource[]
+  reviews      Review[]
 
   @@index([categoryId])
   @@index([deliveryMode])
@@ -282,6 +291,7 @@ model Batch {
   grantsReceived BatchContentGrant[] @relation("ReceivingBatch")
   resources      Resource[]
   questions      Question[]
+  reviews        Review[]
 
   @@index([courseId])
   @@index([status])
@@ -328,6 +338,7 @@ model Enrollment {
   payments       Payment[]
   monthlyPayments MonthlyPayment[]
   certificate    Certificate?
+  reviews        Review[]
 
   @@unique([studentId, batchId])
   @@unique([studentId, courseId])
@@ -584,9 +595,10 @@ model Product {
   type        ProductType @default(BOOK)
   priceMinor  Int         @default(0)
   stock       Int?
-  isPublished Boolean     @default(false)
-  digitalUrl  String?
-  createdAt   DateTime    @default(now())
+  isPublished      Boolean @default(false)
+  digitalUrl       String?
+  freePreviewPages Float   @default(0.5)
+  createdAt        DateTime @default(now())
   updatedAt   DateTime    @updatedAt
   deletedAt   DateTime?
 
@@ -681,4 +693,29 @@ model MonthlyPayment {
   @@index([studentId])
   @@index([status])
   @@index([billingMonth])
+}
+
+model Review {
+  id           String       @id @default(cuid())
+  studentId    String
+  student      User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId     String
+  course       Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batchId      String?
+  batch        Batch?       @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  enrollmentId String?
+  enrollment   Enrollment?  @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  text         String
+  status       ReviewStatus @default(PENDING)
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewedBy   User?        @relation("ReviewModerator", fields: [reviewedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([studentId, courseId])
+  @@index([courseId])
+  @@index([batchId])
+  @@index([status])
+  @@index([createdAt])
 }

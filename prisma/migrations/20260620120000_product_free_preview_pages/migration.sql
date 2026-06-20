@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Product" ADD COLUMN "freePreviewPages" DOUBLE PRECISION NOT NULL DEFAULT 0.5;

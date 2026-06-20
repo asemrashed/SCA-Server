@@ -18,6 +18,7 @@ import type {
   updateSessionSchema,
 } from '../../shared/schemas/liveclass.js'
 import { getGrantedSourceBatchIds } from '../enrollment/enrollment.access.js'
+import { isEnrollmentPaymentBlocked } from '../monthly-payment/monthly-payment.utils.js'
 import {
   toAttendanceSummary,
   mergeLiveClassList,
@@ -54,8 +55,11 @@ async function isEnrolledInBatch(studentId: string, batchId: string): Promise<bo
       batchId,
       status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
     },
+    select: { id: true, batchId: true },
   })
-  return !!row
+  if (!row) return false
+  if (await isEnrollmentPaymentBlocked(row.id, row.batchId)) return false
+  return true
 }
 
 async function assertBatchSessionAccess(

@@ -21,7 +21,15 @@ export interface ProductDetailDto {
   priceMinor: number
   stock: number | null
   isPublished: boolean
+  freePreviewPages: number
+  hasDigitalFile: boolean
   digitalUrl?: string | null
+}
+
+export interface ProductDigitalAccessDto {
+  hasFullAccess: boolean
+  freePreviewPages: number
+  hasDigitalFile: boolean
 }
 
 export interface OrderItemDto {
@@ -65,6 +73,8 @@ export function toProductDetail(product: Product, includeDigitalUrl: boolean): P
     priceMinor: product.priceMinor,
     stock: product.stock,
     isPublished: product.isPublished,
+    freePreviewPages: product.freePreviewPages,
+    hasDigitalFile: Boolean(product.digitalUrl),
     ...(includeDigitalUrl ? { digitalUrl: product.digitalUrl } : {}),
   }
 }

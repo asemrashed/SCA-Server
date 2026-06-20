@@ -9,15 +9,19 @@ function param(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value
 }
 
-function getOptionalRole(req: Request): Role | undefined {
+function getOptionalAuth(req: Request): { role?: Role; userId?: string } {
   const header = req.headers.authorization
-  if (!header?.startsWith('Bearer ')) return undefined
+  if (!header?.startsWith('Bearer ')) return {}
   try {
     const payload = verifyAccessToken(header.slice('Bearer '.length))
-    return payload.role
+    return { role: payload.role, userId: payload.sub }
   } catch {
-    return undefined
+    return {}
   }
+}
+
+function getOptionalRole(req: Request): Role | undefined {
+  return getOptionalAuth(req).role
 }
 
 export async function listProducts(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -40,6 +44,41 @@ export async function getProduct(req: Request, res: Response, next: NextFunction
       includeStaffFields,
     )
     res.json({ data: product })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function getProductDigitalAccess(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const auth = req.auth ?? getOptionalAuth(req)
+    const data = await shopService.getProductDigitalAccess(auth.userId, param(req.params.idOrSlug))
+    res.json({ data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function streamProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const auth = req.auth ?? getOptionalAuth(req)
+    const { buffer, contentType, title, isPreview } = await shopService.streamProductPdf(
+      auth.userId,
+      param(req.params.idOrSlug),
+    )
+
+    const safeName = title.replace(/[^\w\s.-]/g, '').trim() || 'document'
+
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}.pdf"`)
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('X-Preview-Mode', isPreview ? 'preview' : 'full')
+    res.send(buffer)
   } catch (err) {
     next(err)
   }

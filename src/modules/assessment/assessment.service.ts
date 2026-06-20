@@ -172,10 +172,12 @@ function assertExamWindow(exam: { opensAt: Date | null; closesAt: Date | null })
 export async function listQuestions(
   query: QuestionListQuery,
 ): Promise<ApiListResponse<QuestionDto>> {
-  const { page, pageSize, search, category, type, batchId, subjectId, moduleId, sort } = query
+  const { page, pageSize, search, category, type, courseId, batchId, subjectId, moduleId, sort } =
+    query
   const where: Prisma.QuestionWhereInput = {
     ...(category ? { category } : {}),
     ...(type ? { type } : {}),
+    ...(courseId ? { batch: { courseId } } : {}),
     ...(batchId ? { batchId } : {}),
     ...(subjectId ? { subjectId } : {}),
     ...(moduleId ? { moduleId } : {}),
@@ -202,6 +204,10 @@ export async function listQuestions(
       orderBy,
       skip: (page - 1) * pageSize,
       take: pageSize,
+      include: {
+        batch: { select: { title: true, course: { select: { id: true, title: true } } } },
+        subject: { select: { title: true } },
+      },
     }),
     prisma.question.count({ where }),
   ])

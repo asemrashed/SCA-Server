@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client'
 import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { conflict, notFound, validationError } from '../../lib/errors.js'
+import { generateUniqueSlug, slugifyTitle } from '../../lib/slug.js'
 import { DeliveryMode, Role } from '../../shared/enums.js'
 import { isAdminStaff, isStaff } from '../../shared/roles.js'
 import {
@@ -206,12 +207,24 @@ export async function createCourse(input: CreateCourseInput): Promise<CourseDeta
     assertCurriculumMatchesDeliveryMode(input.deliveryMode, input, 'create')
   }
 
-  const existing = await prisma.course.findUnique({ where: { slug: input.slug } })
-  if (existing) {
-    throw conflict('A course with this slug already exists')
+  const titleTaken = await prisma.course.findFirst({
+    where: {
+      deletedAt: null,
+      title: { equals: input.title, mode: 'insensitive' },
+    },
+  })
+  if (titleTaken) {
+    throw conflict('A course with this title already exists')
   }
 
-  const { deliveryMode, title, slug, description, thumbnail, categoryId, priceMinor, faq, isPublished } =
+  const slug =
+    input.slug ??
+    (await generateUniqueSlug(slugifyTitle(input.title), async (candidate) => {
+      const existing = await prisma.course.findUnique({ where: { slug: candidate } })
+      return existing !== null
+    }))
+
+  const { deliveryMode, title, description, thumbnail, categoryId, priceMinor, faq, isPublished } =
     input
 
   const course = await prisma.course.create({
@@ -244,6 +257,19 @@ export async function updateCourse(
   })
   if (!existing) {
     throw notFound('Course not found')
+  }
+
+  if (input.title && input.title.toLowerCase() !== existing.title.toLowerCase()) {
+    const titleTaken = await prisma.course.findFirst({
+      where: {
+        deletedAt: null,
+        title: { equals: input.title, mode: 'insensitive' },
+        id: { not: id },
+      },
+    })
+    if (titleTaken) {
+      throw conflict('A course with this title already exists')
+    }
   }
 
   if (input.slug && input.slug !== existing.slug) {

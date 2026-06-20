@@ -1,7 +1,8 @@
 import type { Prisma } from '@prisma/client'
 import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
-import { conflict, notFound, validationError } from '../../lib/errors.js'
+import { conflict, forbidden, notFound, validationError } from '../../lib/errors.js'
+import { generateUniqueSlug, slugifyTitle } from '../../lib/slug.js'
 import { OrderStatus } from '../../shared/enums.js'
 import {
   createOrderSchema,
@@ -19,6 +20,7 @@ import {
   type AdminOrderRequestDto,
   type OrderListItemDto,
   type ProductDetailDto,
+  type ProductDigitalAccessDto,
   type ProductListItem,
 } from './shop.mapper.js'
 
@@ -89,14 +91,26 @@ export async function getProductByIdOrSlug(
 }
 
 export async function createProduct(input: CreateProductInput): Promise<ProductDetailDto> {
-  const existing = await prisma.product.findFirst({
-    where: { slug: input.slug, deletedAt: null },
+  const titleTaken = await prisma.product.findFirst({
+    where: {
+      deletedAt: null,
+      title: { equals: input.title, mode: 'insensitive' },
+    },
   })
-  if (existing) {
-    throw conflict('Product slug already exists')
+  if (titleTaken) {
+    throw conflict('A product with this title already exists')
   }
 
-  const product = await prisma.product.create({ data: input })
+  const slug =
+    input.slug ??
+    (await generateUniqueSlug(slugifyTitle(input.title), async (candidate) => {
+      const existing = await prisma.product.findFirst({
+        where: { slug: candidate, deletedAt: null },
+      })
+      return existing !== null
+    }))
+
+  const product = await prisma.product.create({ data: { ...input, slug } })
   return toProductDetail(product, true)
 }
 
@@ -109,6 +123,19 @@ export async function updateProduct(
   })
   if (!product) {
     throw notFound('Product not found')
+  }
+
+  if (input.title && input.title.toLowerCase() !== product.title.toLowerCase()) {
+    const titleTaken = await prisma.product.findFirst({
+      where: {
+        deletedAt: null,
+        title: { equals: input.title, mode: 'insensitive' },
+        id: { not: id },
+      },
+    })
+    if (titleTaken) {
+      throw conflict('A product with this title already exists')
+    }
   }
 
   if (input.slug && input.slug !== product.slug) {
@@ -283,4 +310,74 @@ export async function getMyOrder(userId: string, orderId: string): Promise<Order
     throw notFound('Order not found')
   }
   return toOrderListItem(order)
+}
+
+async function findPublishedProduct(idOrSlug: string) {
+  return prisma.product.findFirst({
+    where: {
+      deletedAt: null,
+      isPublished: true,
+      OR: [{ id: idOrSlug }, { slug: idOrSlug }],
+    },
+  })
+}
+
+export async function userHasPurchasedProduct(userId: string, productId: string): Promise<boolean> {
+  const order = await prisma.order.findFirst({
+    where: {
+      userId,
+      status: OrderStatus.CONFIRMED,
+      items: { some: { productId } },
+    },
+    select: { id: true },
+  })
+  return order !== null
+}
+
+export async function getProductDigitalAccess(
+  userId: string | undefined,
+  idOrSlug: string,
+): Promise<ProductDigitalAccessDto> {
+  const product = await findPublishedProduct(idOrSlug)
+  if (!product) {
+    throw notFound('Product not found')
+  }
+
+  const hasFullAccess = userId ? await userHasPurchasedProduct(userId, product.id) : false
+
+  return {
+    hasFullAccess,
+    freePreviewPages: product.freePreviewPages,
+    hasDigitalFile: Boolean(product.digitalUrl),
+  }
+}
+
+export async function streamProductPdf(
+  userId: string | undefined,
+  idOrSlug: string,
+): Promise<{ buffer: Buffer; contentType: string; title: string; isPreview: boolean }> {
+  const product = await findPublishedProduct(idOrSlug)
+  if (!product?.digitalUrl) {
+    throw notFound('Digital file not found')
+  }
+
+  const hasFullAccess = userId ? await userHasPurchasedProduct(userId, product.id) : false
+
+  const upstream = await fetch(product.digitalUrl)
+  if (!upstream.ok) {
+    throw notFound('File could not be loaded from storage')
+  }
+
+  const fullBuffer = Buffer.from(await upstream.arrayBuffer())
+
+  if (!hasFullAccess && product.freePreviewPages <= 0) {
+    throw forbidden('Purchase required to view this document')
+  }
+
+  return {
+    buffer: fullBuffer,
+    contentType: 'application/pdf',
+    title: product.title,
+    isPreview: !hasFullAccess,
+  }
 }

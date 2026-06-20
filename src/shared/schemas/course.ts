@@ -33,13 +33,15 @@ export const subjectInputSchema = z.object({
   modules: z.array(moduleInputSchema).optional(),
 })
 
+const courseSlugSchema = z
+  .string()
+  .min(1)
+  .max(120)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase kebab-case')
+
 const courseBaseSchema = z.object({
   title: z.string().min(1).max(200),
-  slug: z
-    .string()
-    .min(1)
-    .max(120)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase kebab-case'),
+  slug: courseSlugSchema.optional(),
   description: z.string().max(50000).optional().nullable(),
   thumbnail: z.string().url().optional().nullable(),
   categoryId: z.string().cuid().optional().nullable(),
@@ -65,12 +67,7 @@ export const createCourseSchema = z.discriminatedUnion('deliveryMode', [
 export const updateCourseSchema = z
   .object({
     title: z.string().min(1).max(200).optional(),
-    slug: z
-      .string()
-      .min(1)
-      .max(120)
-      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase kebab-case')
-      .optional(),
+    slug: courseSlugSchema.optional(),
     description: z.string().max(50000).optional().nullable(),
     thumbnail: z.string().url().optional().nullable(),
     categoryId: z.string().cuid().optional().nullable(),

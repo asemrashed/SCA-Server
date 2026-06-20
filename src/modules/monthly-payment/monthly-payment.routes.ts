@@ -29,6 +29,14 @@ meMonthlyPaymentRouter.post(
 )
 
 adminMonthlyPaymentRouter.get(
+  '/unpaid-students',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  validate(listMonthlyPaymentsQuerySchema, 'query'),
+  controller.listUnpaidStudents,
+)
+
+adminMonthlyPaymentRouter.get(
   '/',
   authenticate,
   requireRole(...ADMIN_ROLES),

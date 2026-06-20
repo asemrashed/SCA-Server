@@ -6,6 +6,7 @@ import { BatchStatus, DeliveryMode, EnrollmentStatus } from '../../shared/enums.
 import { createEnrollmentSchema, reviewEnrollmentSchema } from '../../shared/schemas/enrollment.js'
 import { loadSubjectsForBatchIds } from '../batch/batch.curriculum.service.js'
 import { getGrantedSourceBatchIds } from './enrollment.access.js'
+import { isEnrollmentPaymentBlocked } from '../monthly-payment/monthly-payment.utils.js'
 import {
   mapSubjectsToEnrollmentDto,
   toEnrollmentDetail,
@@ -126,6 +127,7 @@ export async function getMyEnrollment(
   if (row.status !== EnrollmentStatus.ACTIVE && row.status !== EnrollmentStatus.COMPLETED) {
     throw forbidden('Enrollment is not active')
   }
+  const isAccessBlocked = await isEnrollmentPaymentBlocked(row.id, row.batchId)
 
   const grantedBatchIds = row.batchId ? await getGrantedSourceBatchIds(row.batchId) : []
   const grantedSubjects =
@@ -136,7 +138,7 @@ export async function getMyEnrollment(
         )
       : []
 
-  return toEnrollmentDetail(row, grantedBatchIds, grantedSubjects)
+  return toEnrollmentDetail(row, grantedBatchIds, grantedSubjects, isAccessBlocked)
 }
 
 async function handleExistingEnrollment(
@@ -264,6 +266,9 @@ export async function markLessonComplete(
 
   if (!enrollment) {
     throw forbidden('Not enrolled in this content')
+  }
+  if (await isEnrollmentPaymentBlocked(enrollment.id, enrollment.batchId)) {
+    throw forbidden('Course access is blocked until this month\'s fee is paid')
   }
 
   await prisma.lessonProgress.upsert({

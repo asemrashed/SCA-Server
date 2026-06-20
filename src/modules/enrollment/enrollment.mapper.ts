@@ -97,6 +97,7 @@ export interface EnrollmentDetailDto {
   grantedSubjects?: EnrollmentSubjectDto[]
   modules?: EnrollmentModuleDto[]
   grantedBatchIds?: string[]
+  isAccessBlocked: boolean
 }
 
 export interface AdminEnrollmentRequestDto {
@@ -223,6 +224,7 @@ export function toEnrollmentDetail(
   row: EnrollmentWithRelations,
   grantedBatchIds: string[] = [],
   grantedSubjects: EnrollmentSubjectDto[] = [],
+  isAccessBlocked = false,
 ): EnrollmentDetailDto {
   const completed = progressMap(row.lessonProgress)
 
@@ -243,6 +245,7 @@ export function toEnrollmentDetail(
       subjects: mapSubjectsToEnrollmentDto(row.batch.subjects, completed),
       grantedSubjects: grantedSubjects.length ? grantedSubjects : undefined,
       grantedBatchIds: grantedBatchIds.length ? grantedBatchIds : undefined,
+      isAccessBlocked,
     }
   }
 
@@ -261,6 +264,7 @@ export function toEnrollmentDetail(
       order: mod.order,
       lessons: mod.lessons.map((l) => toLessonDto(l, completed)),
     })),
+    isAccessBlocked,
   }
 }
 

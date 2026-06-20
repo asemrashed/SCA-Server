@@ -1,7 +1,10 @@
 import type { Assignment, Exam, ExamAttempt, ExamQuestion, Question, Submission } from '@prisma/client'
 import type { AttemptStatus, ExamStatus, QuestionType } from '../../shared/enums.js'
 
-type QuestionRow = Question
+type QuestionRow = Question & {
+  batch?: { title: string; course: { id: string; title: string } } | null
+  subject?: { title: string } | null
+}
 
 type ExamQuestionWithQuestion = ExamQuestion & { question: QuestionRow }
 
@@ -19,7 +22,11 @@ export interface QuestionDto {
   marks: number
   fileUrl: string | null
   batchId: string | null
+  batchTitle: string | null
   subjectId: string | null
+  subjectTitle: string | null
+  courseId: string | null
+  courseTitle: string | null
   moduleId: string | null
   createdAt: string
   updatedAt: string
@@ -121,7 +128,11 @@ export function toQuestionDto(question: QuestionRow, includeCorrect: boolean): Q
     marks: question.marks,
     fileUrl: question.fileUrl,
     batchId: question.batchId,
+    batchTitle: question.batch?.title ?? null,
     subjectId: question.subjectId,
+    subjectTitle: question.subject?.title ?? null,
+    courseId: question.batch?.course?.id ?? null,
+    courseTitle: question.batch?.course?.title ?? null,
     moduleId: question.moduleId,
     createdAt: question.createdAt.toISOString(),
     updatedAt: question.updatedAt.toISOString(),

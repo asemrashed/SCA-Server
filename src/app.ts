@@ -56,6 +56,11 @@ import {
   productRouter,
 } from './modules/shop/shop.routes.js'
 import { categoryRouter } from './modules/category/category.routes.js'
+import {
+  adminReviewRouter,
+  meReviewRouter,
+  reviewRouter,
+} from './modules/review/review.routes.js'
 
 export function createApp() {
   const app = express()
@@ -116,7 +121,10 @@ export function createApp() {
   api.use('/me', meOrderRouter)
   api.use('/admin/orders', adminOrderRouter)
   api.use('/admin/monthly-payments', adminMonthlyPaymentRouter)
+  api.use('/admin/reviews', adminReviewRouter)
   api.use('/instructor/monthly-payments', instructorMonthlyPaymentRouter)
+  api.use('/reviews', reviewRouter)
+  api.use('/me', meReviewRouter)
 
   app.use('/api', api)
 

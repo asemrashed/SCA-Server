@@ -82,3 +82,16 @@ export async function listInstructor(
     next(err)
   }
 }
+
+export async function listUnpaidStudents(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const result = await service.listUnpaidStudents(req.query as never)
+    res.json(result)
+  } catch (err) {
+    next(err)
+  }
+}

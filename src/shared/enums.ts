@@ -109,6 +109,12 @@ export enum MonthlyPaymentStatus {
   REJECTED = 'REJECTED',
 }
 
+export enum ReviewStatus {
+  PENDING = 'PENDING',
+  ACTIVE = 'ACTIVE',
+  HIDDEN = 'HIDDEN',
+}
+
 export enum ProductType {
   BOOK = 'BOOK',
   NOTES = 'NOTES',
