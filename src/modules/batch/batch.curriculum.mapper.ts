@@ -13,6 +13,7 @@ export interface CurriculumLessonDto {
   lectureDate: string | null
   order: number
   isPreview: boolean
+  hasVideo: boolean
   videoUrl?: string | null
   content?: string | null
 }
@@ -35,7 +36,10 @@ export interface CurriculumSubjectDto {
   modules: CurriculumModuleDto[]
 }
 
-export function toCurriculumSubjects(subjects: SubjectWithModules[]): CurriculumSubjectDto[] {
+export function toCurriculumSubjects(
+  subjects: SubjectWithModules[],
+  includeProtectedFields = false,
+): CurriculumSubjectDto[] {
   return subjects.map((subject) => ({
     id: subject.id,
     title: subject.title,
@@ -44,17 +48,28 @@ export function toCurriculumSubjects(subjects: SubjectWithModules[]): Curriculum
       id: mod.id,
       title: mod.title,
       order: mod.order,
-      lessons: mod.lessons.map((lesson) => ({
-        id: lesson.id,
-        title: lesson.title,
-        type: lesson.type as LessonType,
-        durationS: lesson.durationS,
-        lectureDate: lesson.lectureDate ? formatLectureDate(lesson.lectureDate) : null,
-        order: lesson.order,
-        isPreview: lesson.isPreview,
-        videoUrl: lesson.videoUrl,
-        content: lesson.content,
-      })),
+      lessons: mod.lessons.map((lesson) => {
+        const base: CurriculumLessonDto = {
+          id: lesson.id,
+          title: lesson.title,
+          type: lesson.type as LessonType,
+          durationS: lesson.durationS,
+          lectureDate: lesson.lectureDate ? formatLectureDate(lesson.lectureDate) : null,
+          order: lesson.order,
+          isPreview: lesson.isPreview,
+          hasVideo: !!lesson.videoUrl && (includeProtectedFields || lesson.isPreview),
+        }
+
+        if (includeProtectedFields) {
+          return {
+            ...base,
+            videoUrl: lesson.videoUrl,
+            content: lesson.content,
+          }
+        }
+
+        return base
+      }),
     })),
   }))
 }

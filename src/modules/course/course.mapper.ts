@@ -42,6 +42,7 @@ export interface CourseLessonDto {
   lectureDate: string | null
   order: number
   isPreview: boolean
+  hasVideo: boolean
   videoUrl?: string | null
   content?: string | null
 }
@@ -148,6 +149,7 @@ function toLessonDto(lesson: LessonRow, includeProtectedFields: boolean): Course
     lectureDate: lesson.lectureDate ? formatLectureDate(lesson.lectureDate) : null,
     order: lesson.order,
     isPreview: lesson.isPreview,
+    hasVideo: !!lesson.videoUrl && (includeProtectedFields || lesson.isPreview),
   }
 
   if (includeProtectedFields) {
@@ -156,10 +158,6 @@ function toLessonDto(lesson: LessonRow, includeProtectedFields: boolean): Course
       videoUrl: lesson.videoUrl,
       content: lesson.content,
     }
-  }
-
-  if (lesson.isPreview) {
-    return { ...base, videoUrl: lesson.videoUrl }
   }
 
   return base

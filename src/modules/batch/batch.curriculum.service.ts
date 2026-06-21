@@ -2,6 +2,8 @@ import type { Prisma } from '@prisma/client'
 import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { notFound, validationError } from '../../lib/errors.js'
+import { Role } from '../../shared/enums.js'
+import { isStaff } from '../../shared/roles.js'
 import { subjectInputSchema } from '../../shared/schemas/course.js'
 import type {
   applyBatchCurriculumSchema,
@@ -28,7 +30,10 @@ const subjectTreeInclude = {
   },
 } satisfies Prisma.SubjectInclude
 
-export async function getBatchCurriculum(batchId: string): Promise<CurriculumSubjectDto[]> {
+export async function getBatchCurriculum(
+  batchId: string,
+  role?: Role,
+): Promise<CurriculumSubjectDto[]> {
   const batch = await prisma.batch.findFirst({
     where: { id: batchId, deletedAt: null },
     include: {
@@ -41,7 +46,7 @@ export async function getBatchCurriculum(batchId: string): Promise<CurriculumSub
   if (!batch) {
     throw notFound('Batch not found')
   }
-  return toCurriculumSubjects(batch.subjects)
+  return toCurriculumSubjects(batch.subjects, role ? isStaff(role) : false)
 }
 
 async function createSubjectsForBatch(batchId: string, subjects: SubjectInput[]): Promise<void> {
@@ -89,7 +94,7 @@ export async function replaceBatchCurriculum(
   if (subjects.length) {
     await createSubjectsForBatch(batchId, subjects)
   }
-  return getBatchCurriculum(batchId)
+  return getBatchCurriculum(batchId, Role.ADMIN)
 }
 
 export async function applyCurriculumToBatches(

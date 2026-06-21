@@ -51,7 +51,7 @@ export interface EnrollmentLessonDto {
   id: string
   title: string
   type: LessonType
-  videoUrl: string | null
+  hasVideo: boolean
   durationS: number | null
   lectureDate: string | null
   order: number
@@ -116,7 +116,7 @@ function toLessonDto(lesson: LessonRow): EnrollmentLessonDto {
     id: lesson.id,
     title: lesson.title,
     type: lesson.type as LessonType,
-    videoUrl: lesson.videoUrl,
+    hasVideo: !!lesson.videoUrl,
     durationS: lesson.durationS,
     lectureDate: lesson.lectureDate ? formatLectureDate(lesson.lectureDate) : null,
     order: lesson.order,

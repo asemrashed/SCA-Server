@@ -45,6 +45,7 @@ import {
   adminResourceSubmissionRouter,
   meResourceSubmissionRouter,
 } from './modules/resource-submission/resource-submission.routes.js'
+import { lessonPlaybackRouter } from './modules/lesson-playback/lesson-playback.routes.js'
 
 export function createApp() {
   const app = express()
@@ -78,6 +79,7 @@ export function createApp() {
   api.use('/me', meMonthlyPaymentRouter)
   api.use('/me', meResourceSubmissionRouter)
   api.use('/resources', resourceRouter)
+  api.use('/lessons', lessonPlaybackRouter)
   api.use('/uploads', uploadRouter)
   api.use('/me', meLiveclassRouter)
   api.use('/products', productRouter)

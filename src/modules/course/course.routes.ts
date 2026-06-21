@@ -21,7 +21,7 @@ courseRouter.get('/:courseId/batches', controller.listBatchesForCourse)
 courseRouter.post(
   '/:courseId/batches',
   authenticate,
-  requireRole(...ADMIN_ROLES),
+  requireRole(...SUPER_ADMIN_ROLES),
   validate(createBatchBodySchema),
   controller.createBatchForCourse,
 )
@@ -39,7 +39,7 @@ courseRouter.get('/:idOrSlug', controller.getByIdOrSlug)
 courseRouter.post(
   '/',
   authenticate,
-  requireRole(...ADMIN_ROLES),
+  requireRole(...SUPER_ADMIN_ROLES),
   validate(createCourseSchema),
   controller.create,
 )
