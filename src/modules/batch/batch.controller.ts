@@ -24,7 +24,7 @@ export async function list(req: Request, res: Response, next: NextFunction): Pro
     const auth = req.auth
       ? { role: req.auth.role, userId: req.auth.userId }
       : getOptionalAuth(req)
-    const result = await batchService.listBatches(req.query as never, auth.role, auth.userId)
+    const result = await batchService.listBatches(req.query as never, auth.role)
     res.json(result)
   } catch (err) {
     next(err)

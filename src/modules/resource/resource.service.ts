@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { forbidden, notFound, validationError } from '../../lib/errors.js'
@@ -25,6 +25,7 @@ const SUBJECT_REQUIRED_CATEGORIES = new Set<ResourceCategory>([
   ResourceCategory.SOLUTION_PDF,
   ResourceCategory.EXAM,
   ResourceCategory.ASSIGNMENT,
+  ResourceCategory.QUESTION_BANK,
 ])
 
 const BATCH_SCOPED_CATEGORIES = new Set<ResourceCategory>([
@@ -36,6 +37,7 @@ const BATCH_SCOPED_CATEGORIES = new Set<ResourceCategory>([
   ResourceCategory.THEORY_SUGGESTION,
   ResourceCategory.EXAM,
   ResourceCategory.ASSIGNMENT,
+  ResourceCategory.QUESTION_BANK,
 ])
 
 function assertCategoryPlacement(
@@ -45,6 +47,7 @@ function assertCategoryPlacement(
     batchId?: string | null
     subjectId?: string | null
     deadlineAt?: Date | null
+    startsAt?: Date | null
   },
 ): void {
   if (course.deliveryMode === DeliveryMode.LIVE) {
@@ -62,6 +65,21 @@ function assertCategoryPlacement(
   ) {
     throw validationError('Deadline is required for exams and assignments')
   }
+
+  if (
+    (input.category === ResourceCategory.EXAM || input.category === ResourceCategory.ASSIGNMENT) &&
+    !input.startsAt
+  ) {
+    throw validationError('Start time is required for exams and assignments')
+  }
+
+  if (
+    input.startsAt &&
+    input.deadlineAt &&
+    input.startsAt.getTime() > input.deadlineAt.getTime()
+  ) {
+    throw validationError('Start time must be before the deadline')
+  }
 }
 
 const PDF_ONLY_CATEGORIES = new Set<ResourceCategory>([
@@ -73,6 +91,7 @@ const PDF_ONLY_CATEGORIES = new Set<ResourceCategory>([
   ResourceCategory.THEORY_SUGGESTION,
   ResourceCategory.EXAM,
   ResourceCategory.ASSIGNMENT,
+  ResourceCategory.QUESTION_BANK,
 ])
 
 function parseSort(sort?: string): Prisma.ResourceOrderByWithRelationInput {
@@ -97,7 +116,6 @@ async function assertCanViewCourse(
   courseId: string,
 ): Promise<void> {
   if (isAdminStaff(role)) return
-  if (role === Role.INSTRUCTOR) return
   if (role === Role.STUDENT) {
     const allowed = await isStudentCourseContentAccess(userId, courseId)
     if (!allowed) {
@@ -108,17 +126,9 @@ async function assertCanViewCourse(
   throw forbidden()
 }
 
-async function assertInstructorOnCourse(
-  userId: string,
-  role: Role,
-  courseId: string,
-): Promise<void> {
-  if (isAdminStaff(role)) return
-  const assigned = await prisma.batchInstructor.findFirst({
-    where: { instructorId: userId, batch: { courseId } },
-  })
-  if (!assigned) {
-    throw forbidden('Not assigned to a batch in this course')
+function assertAdminStaff(role: Role): void {
+  if (!isAdminStaff(role)) {
+    throw forbidden('Admin access required')
   }
 }
 
@@ -216,6 +226,14 @@ export async function listResources(
     ...(query.search
       ? { title: { contains: query.search, mode: 'insensitive' } }
       : {}),
+    ...(query.dateFrom || query.dateTo
+      ? {
+          createdAt: {
+            ...(query.dateFrom ? { gte: query.dateFrom } : {}),
+            ...(query.dateTo ? { lte: query.dateTo } : {}),
+          },
+        }
+      : {}),
   }
 
   const [total, rows] = await Promise.all([
@@ -254,24 +272,69 @@ export async function createResource(
       batchId: input.batchId,
       subjectId: input.subjectId,
       deadlineAt: input.deadlineAt,
+      startsAt: input.startsAt,
     },
   )
 
   await validatePlacement(input)
-  await assertInstructorOnCourse(userId, role, input.courseId)
-  const row = await prisma.resource.create({
-    data: {
-      title: input.title,
-      fileUrl: input.fileUrl,
-      fileType: normalizeFileType(category, input.fileType),
-      category,
-      courseId: input.courseId,
-      batchId: input.batchId ?? null,
-      subjectId: input.subjectId ?? null,
-      moduleId: input.moduleId ?? null,
-      lessonId: input.lessonId ?? null,
-      deadlineAt: input.deadlineAt ?? null,
-    },
+  assertAdminStaff(role)
+
+  const linkedQuestionIds = input.linkedQuestionIds ?? []
+  let fileUrl = input.fileUrl?.trim() ?? ''
+  if (!fileUrl && linkedQuestionIds.length > 0) {
+    const firstQuestion = await prisma.resource.findFirst({
+      where: { id: { in: linkedQuestionIds }, category: ResourceCategory.QUESTION_BANK },
+    })
+    if (!firstQuestion) {
+      throw validationError('Linked question IDs are invalid')
+    }
+    fileUrl = firstQuestion.fileUrl
+  }
+
+  const row = await prisma.$transaction(async (tx) => {
+    let finalLinkedQuestionIds = [...linkedQuestionIds]
+
+    if (
+      category === ResourceCategory.EXAM &&
+      fileUrl &&
+      finalLinkedQuestionIds.length === 0
+    ) {
+      const questionBankRow = await tx.resource.create({
+        data: {
+          title: input.title,
+          fileUrl,
+          fileType: normalizeFileType(ResourceCategory.QUESTION_BANK, input.fileType),
+          category: ResourceCategory.QUESTION_BANK,
+          courseId: input.courseId,
+          batchId: input.batchId ?? null,
+          subjectId: input.subjectId ?? null,
+          moduleId: input.moduleId ?? null,
+          lessonId: input.lessonId ?? null,
+          marks: input.marks ?? 1,
+        },
+      })
+      finalLinkedQuestionIds = [questionBankRow.id]
+    }
+
+    return tx.resource.create({
+      data: {
+        title: input.title,
+        fileUrl,
+        fileType: normalizeFileType(category, input.fileType),
+        category,
+        courseId: input.courseId,
+        batchId: input.batchId ?? null,
+        subjectId: input.subjectId ?? null,
+        moduleId: input.moduleId ?? null,
+        lessonId: input.lessonId ?? null,
+        deadlineAt: input.deadlineAt ?? null,
+        startsAt: input.startsAt ?? null,
+        marks: input.marks ?? null,
+        linkedQuestionIds: finalLinkedQuestionIds.length
+          ? finalLinkedQuestionIds
+          : undefined,
+      },
+    })
   })
 
   return toResourceDto(row, role)
@@ -284,7 +347,7 @@ export async function updateResource(
   input: UpdateResourceInput,
 ): Promise<ResourceDto> {
   const existing = await getResourceOrThrow(resourceId)
-  await assertInstructorOnCourse(userId, role, existing.courseId)
+  assertAdminStaff(role)
 
   const course = await prisma.course.findFirst({
     where: { id: existing.courseId, deletedAt: null },
@@ -301,6 +364,7 @@ export async function updateResource(
     moduleId: input.moduleId !== undefined ? input.moduleId : existing.moduleId,
     lessonId: input.lessonId !== undefined ? input.lessonId : existing.lessonId,
     deadlineAt: input.deadlineAt !== undefined ? input.deadlineAt : existing.deadlineAt,
+    startsAt: input.startsAt !== undefined ? input.startsAt : existing.startsAt,
     fileType: input.fileType !== undefined ? input.fileType : existing.fileType,
   }
 
@@ -317,21 +381,32 @@ export async function updateResource(
     lessonId: merged.lessonId,
   })
 
+  const updateData: Prisma.ResourceUpdateInput = {
+    ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.fileUrl !== undefined ? { fileUrl: input.fileUrl } : {}),
+    ...(input.fileType !== undefined || PDF_ONLY_CATEGORIES.has(category)
+      ? { fileType: normalizeFileType(category, input.fileType ?? existing.fileType) }
+      : {}),
+    ...(input.category !== undefined ? { category: input.category } : {}),
+    ...(input.batchId !== undefined ? { batchId: input.batchId } : {}),
+    ...(input.subjectId !== undefined ? { subjectId: input.subjectId } : {}),
+    ...(input.moduleId !== undefined ? { moduleId: input.moduleId } : {}),
+    ...(input.lessonId !== undefined ? { lessonId: input.lessonId } : {}),
+    ...(input.deadlineAt !== undefined ? { deadlineAt: input.deadlineAt } : {}),
+    ...(input.startsAt !== undefined ? { startsAt: input.startsAt } : {}),
+    ...(input.marks !== undefined ? { marks: input.marks } : {}),
+    ...(input.linkedQuestionIds !== undefined
+      ? {
+          linkedQuestionIds: input.linkedQuestionIds?.length
+            ? input.linkedQuestionIds
+            : Prisma.DbNull,
+        }
+      : {}),
+  }
+
   const row = await prisma.resource.update({
     where: { id: resourceId },
-    data: {
-      ...(input.title !== undefined ? { title: input.title } : {}),
-      ...(input.fileUrl !== undefined ? { fileUrl: input.fileUrl } : {}),
-      ...(input.fileType !== undefined || PDF_ONLY_CATEGORIES.has(category)
-        ? { fileType: normalizeFileType(category, input.fileType ?? existing.fileType) }
-        : {}),
-      ...(input.category !== undefined ? { category: input.category } : {}),
-      ...(input.batchId !== undefined ? { batchId: input.batchId } : {}),
-      ...(input.subjectId !== undefined ? { subjectId: input.subjectId } : {}),
-      ...(input.moduleId !== undefined ? { moduleId: input.moduleId } : {}),
-      ...(input.lessonId !== undefined ? { lessonId: input.lessonId } : {}),
-      ...(input.deadlineAt !== undefined ? { deadlineAt: input.deadlineAt } : {}),
-    },
+    data: updateData,
   })
 
   return toResourceDto(row, role)
@@ -343,7 +418,7 @@ export async function deleteResource(
   resourceId: string,
 ): Promise<void> {
   const existing = await getResourceOrThrow(resourceId)
-  await assertInstructorOnCourse(userId, role, existing.courseId)
+  assertAdminStaff(role)
   await prisma.resource.delete({ where: { id: resourceId } })
 }
 

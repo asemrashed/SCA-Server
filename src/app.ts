@@ -25,29 +25,9 @@ import {
 } from './modules/liveclass/liveclass.routes.js'
 import { uploadRouter } from './modules/upload/upload.routes.js'
 import {
-  assignmentRouter,
-  attemptRouter,
-  batchAssignmentRouter,
-  batchExamRouter,
-  courseAssignmentRouter,
-  courseExamRouter,
-  examRouter,
-  questionRouter,
-  submissionRouter,
-} from './modules/assessment/assessment.routes.js'
-import {
-  mePaymentRouter,
-  paymentRouter,
-} from './modules/payment/payment.routes.js'
-import {
   adminMonthlyPaymentRouter,
-  instructorMonthlyPaymentRouter,
   meMonthlyPaymentRouter,
 } from './modules/monthly-payment/monthly-payment.routes.js'
-import {
-  certificateRouter,
-  meCertificateRouter,
-} from './modules/certificate/certificate.routes.js'
 import { adminUserRouter } from './modules/admin-user/admin-user.routes.js'
 import {
   adminOrderRouter,
@@ -61,6 +41,10 @@ import {
   meReviewRouter,
   reviewRouter,
 } from './modules/review/review.routes.js'
+import {
+  adminResourceSubmissionRouter,
+  meResourceSubmissionRouter,
+} from './modules/resource-submission/resource-submission.routes.js'
 
 export function createApp() {
   const app = express()
@@ -82,24 +66,8 @@ export function createApp() {
   })
 
   api.use('/auth', authRouter)
-
-  const batchesApi = express.Router()
-  batchesApi.use('/:batchId/exams', batchExamRouter)
-  batchesApi.use('/:batchId/assignments', batchAssignmentRouter)
-  batchesApi.use('/', batchRouter)
-  api.use('/batches', batchesApi)
-
-  const coursesApi = express.Router()
-  coursesApi.use('/:courseId/exams', courseExamRouter)
-  coursesApi.use('/:courseId/assignments', courseAssignmentRouter)
-  coursesApi.use('/', courseRouter)
-  api.use('/courses', coursesApi)
-
-  api.use('/questions', questionRouter)
-  api.use('/exams', examRouter)
-  api.use('/attempts', attemptRouter)
-  api.use('/assignments', assignmentRouter)
-  api.use('/submissions', submissionRouter)
+  api.use('/batches', batchRouter)
+  api.use('/courses', courseRouter)
   api.use('/sessions', sessionsRouter)
   api.use('/live-classes', liveClassSchedulesRouter)
   api.use('/recordings', recordingsRouter)
@@ -108,21 +76,18 @@ export function createApp() {
   api.use('/admin/users', adminUserRouter)
   api.use('/me', meEnrollmentRouter)
   api.use('/me', meMonthlyPaymentRouter)
+  api.use('/me', meResourceSubmissionRouter)
   api.use('/resources', resourceRouter)
   api.use('/uploads', uploadRouter)
-  api.use('/payments', paymentRouter)
-  api.use('/me', mePaymentRouter)
   api.use('/me', meLiveclassRouter)
-  api.use('/me', meCertificateRouter)
-  api.use('/certificates', certificateRouter)
   api.use('/products', productRouter)
   api.use('/categories', categoryRouter)
   api.use('/orders', orderRouter)
   api.use('/me', meOrderRouter)
   api.use('/admin/orders', adminOrderRouter)
   api.use('/admin/monthly-payments', adminMonthlyPaymentRouter)
+  api.use('/admin/resource-submissions', adminResourceSubmissionRouter)
   api.use('/admin/reviews', adminReviewRouter)
-  api.use('/instructor/monthly-payments', instructorMonthlyPaymentRouter)
   api.use('/reviews', reviewRouter)
   api.use('/me', meReviewRouter)
 

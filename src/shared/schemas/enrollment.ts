@@ -10,10 +10,6 @@ export const createEnrollmentSchema = z
     message: 'Exactly one of batchId or courseId is required',
   })
 
-export const lessonProgressSchema = z.object({
-  completed: z.literal(true),
-})
-
 export const listAdminEnrollmentsQuerySchema = z.object({
   status: z.nativeEnum(EnrollmentStatus).optional(),
 })

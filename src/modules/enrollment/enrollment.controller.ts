@@ -36,22 +36,6 @@ export async function create(req: Request, res: Response, next: NextFunction): P
   }
 }
 
-export async function updateLessonProgress(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const data = await enrollmentService.markLessonComplete(
-      req.auth!.userId,
-      param(req.params.lessonId),
-    )
-    res.json({ data })
-  } catch (err) {
-    next(err)
-  }
-}
-
 export async function listAdminRequests(
   req: Request,
   res: Response,

@@ -10,7 +10,6 @@ datasource db {
 
 enum Role {
   STUDENT
-  INSTRUCTOR
   ADMIN
   SUPER_ADMIN
 }
@@ -61,37 +60,6 @@ enum AttendanceStatus {
   EXCUSED
 }
 
-enum QuestionType {
-  MCQ
-  TRUE_FALSE
-  SHORT_ANSWER
-  WRITTEN
-  PDF
-}
-
-enum ExamStatus {
-  DRAFT
-  PUBLISHED
-  ARCHIVED
-}
-
-enum AttemptStatus {
-  IN_PROGRESS
-  SUBMITTED
-}
-
-enum PaymentPurpose {
-  ORDER
-  ENROLLMENT
-}
-
-enum PaymentStatus {
-  PENDING
-  PAID
-  FAILED
-  CANCELLED
-}
-
 enum MonthlyPaymentStatus {
   REQUESTED
   APPROVED
@@ -131,17 +99,14 @@ model User {
   updatedAt     DateTime @updatedAt
   deletedAt     DateTime?
 
-  refreshTokens  RefreshToken[]
-  taughtBatches  BatchInstructor[]
-  enrollments    Enrollment[]
-  attendance     Attendance[]
-  examAttempts   ExamAttempt[]
-  submissions    Submission[]
-  payments       Payment[]
-  certificates   Certificate[]
-  orders         Order[]
+  refreshTokens            RefreshToken[]
+  enrollments              Enrollment[]
+  attendance               Attendance[]
+  orders                   Order[]
   monthlyPaymentsAsStudent MonthlyPayment[] @relation("MonthlyPaymentStudent")
   monthlyPaymentsReviewed  MonthlyPayment[] @relation("MonthlyPaymentReviewer")
+  resourceSubmissions      ResourceSubmission[] @relation("ResourceSubmissionStudent")
+  resourceSubmissionsReviewed ResourceSubmission[] @relation("ResourceSubmissionReviewer")
   reviews                  Review[]
   reviewsModerated         Review[]         @relation("ReviewModerator")
 
@@ -193,13 +158,11 @@ model Course {
   updatedAt     DateTime     @updatedAt
   deletedAt     DateTime?
 
-  modules      Module[]
-  batches      Batch[]
-  enrollments  Enrollment[]
-  exams        Exam[]
-  assignments  Assignment[]
-  resources    Resource[]
-  reviews      Review[]
+  modules     Module[]
+  batches     Batch[]
+  enrollments Enrollment[]
+  resources   Resource[]
+  reviews     Review[]
 
   @@index([categoryId])
   @@index([deliveryMode])
@@ -216,7 +179,6 @@ model Subject {
 
   modules   Module[]
   resources Resource[]
-  questions Question[]
 
   @@index([batchId])
 }
@@ -232,34 +194,30 @@ model Module {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  lessons     Lesson[]
-  exams       Exam[]
-  assignments Assignment[]
-  resources   Resource[]
-  questions   Question[]
+  lessons   Lesson[]
+  resources Resource[]
 
   @@index([courseId])
   @@index([subjectId])
 }
 
 model Lesson {
-  id        String     @id @default(cuid())
-  moduleId  String
-  module    Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  title     String
-  type      LessonType @default(RECORDED)
-  videoUrl  String?
-  content   String?
-  durationS Int?
-  lectureDate DateTime? @db.Date
-  order     Int        @default(0)
-  isPreview Boolean    @default(false)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id          String     @id @default(cuid())
+  moduleId    String
+  module      Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title       String
+  type        LessonType @default(RECORDED)
+  videoUrl    String?
+  content     String?
+  durationS   Int?
+  lectureDate DateTime?  @db.Date
+  order       Int        @default(0)
+  isPreview   Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
-  lessonProgress LessonProgress[]
-  recordings     Recording[]
-  resources      Resource[]
+  recordings Recording[]
+  resources  Resource[]
 
   @@index([moduleId])
 }
@@ -281,17 +239,15 @@ model Batch {
   updatedAt            DateTime    @updatedAt
   deletedAt            DateTime?
 
-  subjects       Subject[]
-  instructors    BatchInstructor[]
-  enrollments    Enrollment[]
-  liveSessions        LiveSession[]
-  liveClassSchedules  LiveClassSchedule[]
-  recordings     Recording[]
-  grantsGiven    BatchContentGrant[] @relation("GrantingBatch")
-  grantsReceived BatchContentGrant[] @relation("ReceivingBatch")
-  resources      Resource[]
-  questions      Question[]
-  reviews        Review[]
+  subjects           Subject[]
+  enrollments        Enrollment[]
+  liveSessions       LiveSession[]
+  liveClassSchedules LiveClassSchedule[]
+  recordings         Recording[]
+  grantsGiven        BatchContentGrant[] @relation("GrantingBatch")
+  grantsReceived     BatchContentGrant[] @relation("ReceivingBatch")
+  resources          Resource[]
+  reviews            Review[]
 
   @@index([courseId])
   @@index([status])
@@ -309,56 +265,28 @@ model BatchContentGrant {
   @@index([receivingBatchId])
 }
 
-model BatchInstructor {
-  batchId      String
-  batch        Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  instructorId String
-  instructor   User     @relation(fields: [instructorId], references: [id], onDelete: Cascade)
-  assignedAt   DateTime @default(now())
-
-  @@id([batchId, instructorId])
-  @@index([instructorId])
-}
-
 model Enrollment {
-  id          String           @id @default(cuid())
-  studentId   String
-  student     User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  batchId     String?
-  batch       Batch?           @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  courseId    String?
-  course      Course?          @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  status      EnrollmentStatus @default(PENDING)
-  rollNumber  String?
-  progressPct Int              @default(0)
-  enrolledAt  DateTime         @default(now())
+  id         String           @id @default(cuid())
+  studentId  String
+  student    User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  batchId    String?
+  batch      Batch?           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  courseId   String?
+  course     Course?          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  status     EnrollmentStatus @default(PENDING)
+  rollNumber String?
+  enrolledAt DateTime         @default(now())
   completedAt DateTime?
 
-  lessonProgress LessonProgress[]
-  payments       Payment[]
   monthlyPayments MonthlyPayment[]
-  certificate    Certificate?
-  reviews        Review[]
+  reviews         Review[]
+  resourceSubmissions ResourceSubmission[]
 
   @@unique([studentId, batchId])
   @@unique([studentId, courseId])
   @@index([batchId])
   @@index([courseId])
   @@index([studentId])
-}
-
-model LessonProgress {
-  id           String     @id @default(cuid())
-  enrollmentId String
-  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  lessonId     String
-  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  completed    Boolean    @default(false)
-  completedAt  DateTime?
-  updatedAt    DateTime   @updatedAt
-
-  @@unique([enrollmentId, lessonId])
-  @@index([lessonId])
 }
 
 enum ResourceCategory {
@@ -371,26 +299,31 @@ enum ResourceCategory {
   THEORY_SUGGESTION
   EXAM
   ASSIGNMENT
+  QUESTION_BANK
 }
 
 model Resource {
-  id         String           @id @default(cuid())
-  title      String
-  fileUrl    String
-  fileType   String?
-  category   ResourceCategory @default(GENERAL)
-  courseId   String
-  course     Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  batchId    String?
-  batch      Batch?           @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  subjectId  String?
-  subject    Subject?         @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  moduleId   String?
-  module     Module?          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  lessonId   String?
-  lesson     Lesson?          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  deadlineAt DateTime?
-  createdAt  DateTime         @default(now())
+  id                 String           @id @default(cuid())
+  title              String
+  fileUrl            String
+  fileType           String?
+  category           ResourceCategory @default(GENERAL)
+  courseId           String
+  course             Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batchId            String?
+  batch              Batch?           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  subjectId          String?
+  subject            Subject?         @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  moduleId           String?
+  module             Module?          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  lessonId           String?
+  lesson             Lesson?          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  deadlineAt         DateTime?
+  startsAt           DateTime?
+  marks              Int?
+  linkedQuestionIds  Json?
+  createdAt          DateTime         @default(now())
+  submissions        ResourceSubmission[]
 
   @@index([courseId])
   @@index([courseId, category])
@@ -399,6 +332,35 @@ model Resource {
   @@index([subjectId])
   @@index([moduleId])
   @@index([lessonId])
+}
+
+enum ResourceSubmissionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model ResourceSubmission {
+  id                String                   @id @default(cuid())
+  resourceId        String
+  resource          Resource                 @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  enrollmentId      String
+  enrollment        Enrollment               @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           User                     @relation("ResourceSubmissionStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  status            ResourceSubmissionStatus @default(PENDING)
+  submittedAt       DateTime                 @default(now())
+  reviewedAt        DateTime?
+  reviewedById      String?
+  reviewedBy        User?                    @relation("ResourceSubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  resultFileUrl     String?
+  resultPublishedAt DateTime?
+
+  @@unique([resourceId, enrollmentId])
+  @@index([resourceId])
+  @@index([enrollmentId])
+  @@index([studentId])
+  @@index([status])
 }
 
 model LiveSession {
@@ -471,136 +433,21 @@ model Attendance {
   @@index([studentId])
 }
 
-model Question {
-  id        String       @id @default(cuid())
-  stem      String
-  type      QuestionType
-  options   Json?
-  correct   Json
-  category  String?
-  marks     Int          @default(1)
-  fileUrl   String?
-  batchId   String?
-  batch     Batch?       @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  subjectId String?
-  subject   Subject?     @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  moduleId  String?
-  module    Module?      @relation(fields: [moduleId], references: [id], onDelete: SetNull)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-
-  examQuestions ExamQuestion[]
-
-  @@index([category])
-  @@index([type])
-  @@index([batchId])
-  @@index([subjectId])
-  @@index([moduleId])
-}
-
-model Exam {
-  id          String     @id @default(cuid())
-  courseId    String
-  course      Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  moduleId    String?
-  module      Module?    @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  title       String
-  status      ExamStatus @default(DRAFT)
-  durationMin Int?
-  totalMarks  Int        @default(0)
-  opensAt     DateTime?
-  closesAt    DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-
-  questions ExamQuestion[]
-  attempts  ExamAttempt[]
-
-  @@index([courseId])
-  @@index([moduleId])
-}
-
-model ExamQuestion {
-  examId     String
-  exam       Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
-  questionId String
-  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  order      Int      @default(0)
-  marks      Int?
-
-  @@id([examId, questionId])
-  @@index([questionId])
-}
-
-model ExamAttempt {
-  id          String        @id @default(cuid())
-  examId      String
-  exam        Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
-  studentId   String
-  student     User          @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  status      AttemptStatus @default(IN_PROGRESS)
-  answers     Json          @default("{}")
-  scoreMarks  Int?
-  scorePct    Int?
-  startedAt   DateTime      @default(now())
-  submittedAt DateTime?
-  expiresAt   DateTime?
-
-  @@unique([examId, studentId])
-  @@index([studentId])
-}
-
-model Assignment {
-  id          String    @id @default(cuid())
-  courseId    String
-  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  moduleId    String?
-  module      Module?   @relation(fields: [moduleId], references: [id], onDelete: SetNull)
-  title       String
-  description String?
-  totalMarks  Int       @default(100)
-  dueAt       DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  submissions Submission[]
-
-  @@index([courseId])
-  @@index([moduleId])
-}
-
-model Submission {
-  id           String     @id @default(cuid())
-  assignmentId String
-  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  studentId    String
-  student      User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  fileUrl      String?
-  text         String?
-  scoreMarks   Int?
-  feedback     String?
-  submittedAt  DateTime   @default(now())
-  gradedAt     DateTime?
-
-  @@unique([assignmentId, studentId])
-  @@index([studentId])
-}
-
 model Product {
-  id          String      @id @default(cuid())
-  title       String
-  slug        String      @unique
-  description String?
-  thumbnail   String?
-  type        ProductType @default(BOOK)
-  priceMinor  Int         @default(0)
-  stock       Int?
-  isPublished      Boolean @default(false)
+  id               String      @id @default(cuid())
+  title            String
+  slug             String      @unique
+  description      String?
+  thumbnail        String?
+  type             ProductType @default(BOOK)
+  priceMinor       Int         @default(0)
+  stock            Int?
+  isPublished      Boolean     @default(false)
   digitalUrl       String?
-  freePreviewPages Float   @default(0.5)
-  createdAt        DateTime @default(now())
-  updatedAt   DateTime    @updatedAt
-  deletedAt   DateTime?
+  freePreviewPages Float       @default(0.5)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
 
   orderItems OrderItem[]
 
@@ -636,42 +483,6 @@ model OrderItem {
 
   @@index([orderId])
   @@index([productId])
-}
-
-model Payment {
-  id            String         @id @default(cuid())
-  userId        String
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purpose       PaymentPurpose
-  enrollmentId  String?
-  enrollment    Enrollment?    @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
-  amountMinor   Int
-  discountMinor Int            @default(0)
-  status        PaymentStatus  @default(PENDING)
-  provider      String         @default("sslcommerz")
-  providerRef   String         @unique
-  transactionId String?
-  couponCode    String?
-  paidAt        DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-
-  @@index([userId])
-  @@index([enrollmentId])
-  @@index([status])
-}
-
-model Certificate {
-  id           String     @id @default(cuid())
-  enrollmentId String     @unique
-  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  studentId    String
-  student      User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  serial       String     @unique
-  pdfUrl       String?
-  issuedAt     DateTime   @default(now())
-
-  @@index([studentId])
 }
 
 model MonthlyPayment {

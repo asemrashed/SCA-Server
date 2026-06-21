@@ -6,7 +6,6 @@ import { Role } from '../../shared/enums.js'
 import { ADMIN_ROLES } from '../../shared/roles.js'
 import {
   createEnrollmentSchema,
-  lessonProgressSchema,
   listAdminEnrollmentsQuerySchema,
   reviewEnrollmentSchema,
 } from '../../shared/schemas/enrollment.js'
@@ -35,13 +34,6 @@ meEnrollmentRouter.get(
   authenticate,
   requireRole(Role.STUDENT),
   controller.getMine,
-)
-meEnrollmentRouter.patch(
-  '/lessons/:lessonId/progress',
-  authenticate,
-  requireRole(Role.STUDENT),
-  validate(lessonProgressSchema),
-  controller.updateLessonProgress,
 )
 
 adminEnrollmentRouter.get(

@@ -1,0 +1,1 @@
+ALTER TABLE "Resource" ADD COLUMN "startsAt" TIMESTAMP(3);

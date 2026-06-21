@@ -6,7 +6,6 @@ import {
   EnrollmentKind,
   EnrollmentStatus,
   MonthlyPaymentStatus,
-  PaymentStatus,
 } from '../../shared/enums.js'
 import type {
   ListMonthlyPaymentsQuery,
@@ -237,17 +236,10 @@ export async function getEnrollmentPaymentHistory(
     throw notFound('User not found')
   }
 
-  const [monthlyRows, enrollmentPayments, currentRequest] = await Promise.all([
+  const [monthlyRows, currentRequest] = await Promise.all([
     prisma.monthlyPayment.findMany({
       where: { enrollmentId, status: MonthlyPaymentStatus.APPROVED },
       orderBy: [{ billingMonth: 'desc' }, { reviewedAt: 'desc' }],
-    }),
-    prisma.payment.findMany({
-      where: {
-        enrollmentId,
-        status: PaymentStatus.PAID,
-      },
-      orderBy: { paidAt: 'desc' },
     }),
     prisma.monthlyPayment.findUnique({
       where: {
@@ -257,8 +249,8 @@ export async function getEnrollmentPaymentHistory(
     }),
   ])
 
-  const history: EnrollmentPaymentHistoryItem[] = [
-    ...monthlyRows.map((row) => ({
+  const history: EnrollmentPaymentHistoryItem[] = monthlyRows
+    .map((row) => ({
       id: row.id,
       type: 'MONTHLY' as const,
       billingMonth: row.billingMonth,
@@ -266,21 +258,12 @@ export async function getEnrollmentPaymentHistory(
       status: row.status,
       paidAt: row.reviewedAt?.toISOString() ?? null,
       createdAt: row.requestedAt.toISOString(),
-    })),
-    ...enrollmentPayments.map((row) => ({
-      id: row.id,
-      type: 'ENROLLMENT' as const,
-      billingMonth: null,
-      amountMinor: row.amountMinor,
-      status: row.status,
-      paidAt: row.paidAt?.toISOString() ?? null,
-      createdAt: row.createdAt.toISOString(),
-    })),
-  ].sort((a, b) => {
-    const aTime = new Date(a.paidAt ?? a.createdAt).getTime()
-    const bTime = new Date(b.paidAt ?? b.createdAt).getTime()
-    return bTime - aTime
-  })
+    }))
+    .sort((a, b) => {
+      const aTime = new Date(a.paidAt ?? a.createdAt).getTime()
+      const bTime = new Date(b.paidAt ?? b.createdAt).getTime()
+      return bTime - aTime
+    })
 
   const canRequestCurrentMonth =
     !currentRequest || currentRequest.status === MonthlyPaymentStatus.REJECTED
@@ -365,10 +348,7 @@ export async function requestMonthlyPayment(
   }
 }
 
-function buildListWhere(
-  query: ListMonthlyPaymentsQuery,
-  instructorId?: string,
-): Prisma.MonthlyPaymentWhereInput {
+function buildListWhere(query: ListMonthlyPaymentsQuery): Prisma.MonthlyPaymentWhereInput {
   const where: Prisma.MonthlyPaymentWhereInput = {}
 
   if (query.status) {
@@ -384,13 +364,6 @@ function buildListWhere(
       { courseId: query.courseId },
       { batch: { courseId: query.courseId } },
     ]
-  }
-
-  if (instructorId) {
-    enrollmentWhere.batch = {
-      ...(enrollmentWhere.batch as Prisma.BatchWhereInput | undefined),
-      instructors: { some: { instructorId } },
-    }
   }
 
   if (Object.keys(enrollmentWhere).length > 0) {
@@ -413,9 +386,8 @@ function buildListWhere(
 
 export async function listMonthlyPayments(
   query: ListMonthlyPaymentsQuery,
-  instructorId?: string,
 ): Promise<{ data: MonthlyPaymentDto[]; meta: { total: number; page: number; pageSize: number } }> {
-  const where = buildListWhere(query, instructorId)
+  const where = buildListWhere(query)
   const skip = (query.page - 1) * query.pageSize
 
   const [rows, total] = await Promise.all([
@@ -472,19 +444,6 @@ export async function reviewMonthlyPayment(
     include: monthlyPaymentInclude,
   })
   return toMonthlyPaymentDto(row)
-}
-
-export async function listInstructorPaymentHistory(
-  instructorId: string,
-  query: ListMonthlyPaymentsQuery,
-): Promise<{ data: MonthlyPaymentDto[]; meta: { total: number; page: number; pageSize: number } }> {
-  return listMonthlyPayments(
-    {
-      ...query,
-      status: query.status ?? MonthlyPaymentStatus.APPROVED,
-    },
-    instructorId,
-  )
 }
 
 function buildUnpaidEnrollmentWhere(
@@ -587,17 +546,5 @@ export async function listUnpaidStudents(
   return {
     data,
     meta: { total, page: query.page, pageSize: query.pageSize },
-  }
-}
-
-export async function assertInstructorCanAccessBatch(
-  instructorId: string,
-  batchId: string,
-): Promise<void> {
-  const link = await prisma.batchInstructor.findUnique({
-    where: { batchId_instructorId: { batchId, instructorId } },
-  })
-  if (!link) {
-    throw forbidden('You are not assigned to this batch')
   }
 }

@@ -12,7 +12,6 @@ import * as controller from './monthly-payment.controller.js'
 
 export const meMonthlyPaymentRouter = Router()
 export const adminMonthlyPaymentRouter = Router()
-export const instructorMonthlyPaymentRouter = Router()
 
 meMonthlyPaymentRouter.get(
   '/enrollments/:enrollmentId/payment-history',
@@ -50,12 +49,4 @@ adminMonthlyPaymentRouter.patch(
   requireRole(...ADMIN_ROLES),
   validate(reviewMonthlyPaymentSchema),
   controller.review,
-)
-
-instructorMonthlyPaymentRouter.get(
-  '/',
-  authenticate,
-  requireRole(Role.INSTRUCTOR),
-  validate(listMonthlyPaymentsQuerySchema, 'query'),
-  controller.listInstructor,
 )

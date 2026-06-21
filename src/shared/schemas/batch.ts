@@ -22,7 +22,6 @@ const batchFieldsSchema = z.object({
   startDate: optionalDateField,
   endDate: optionalDateField,
   thumbnail: z.string().url().optional().nullable(),
-  instructorIds: z.array(z.string().cuid()).optional(),
 })
 
 /** Cohort under a live course — curriculum (subjects) lives on the batch. */

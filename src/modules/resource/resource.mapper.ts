@@ -13,7 +13,15 @@ export interface ResourceDto {
   moduleId: string | null
   lessonId: string | null
   deadlineAt: string | null
+  startsAt: string | null
+  marks: number | null
+  linkedQuestionIds: string[]
   createdAt: string
+}
+
+function parseLinkedQuestionIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((id): id is string => typeof id === 'string' && id.length > 0)
 }
 
 function shouldHideFileUrl(role: Role, fileType: string | null): boolean {
@@ -35,6 +43,9 @@ export function toResourceDto(row: Resource, role: Role): ResourceDto {
     moduleId: row.moduleId,
     lessonId: row.lessonId,
     deadlineAt: row.deadlineAt?.toISOString() ?? null,
+    startsAt: row.startsAt?.toISOString() ?? null,
+    marks: row.marks,
+    linkedQuestionIds: parseLinkedQuestionIds(row.linkedQuestionIds),
     createdAt: row.createdAt.toISOString(),
   }
 }

@@ -67,22 +67,6 @@ export async function review(
   }
 }
 
-export async function listInstructor(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const result = await service.listInstructorPaymentHistory(
-      req.auth!.userId,
-      req.query as never,
-    )
-    res.json(result)
-  } catch (err) {
-    next(err)
-  }
-}
-
 export async function listUnpaidStudents(
   req: Request,
   res: Response,

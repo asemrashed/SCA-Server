@@ -108,10 +108,6 @@ export async function updateAdminUser(
     throw forbidden('Cannot modify a super admin account')
   }
 
-  if (target.role === Role.INSTRUCTOR) {
-    throw forbidden('Instructor accounts are disabled')
-  }
-
   if (userId === actorId && input.isActive === false) {
     throw forbidden('You cannot deactivate your own account')
   }

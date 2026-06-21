@@ -1,6 +1,5 @@
 export enum Role {
   STUDENT = 'STUDENT',
-  INSTRUCTOR = 'INSTRUCTOR',
   ADMIN = 'ADMIN',
   SUPER_ADMIN = 'SUPER_ADMIN',
 }
@@ -53,25 +52,6 @@ export enum EnrollmentKind {
   COURSE = 'COURSE',
 }
 
-export enum QuestionType {
-  MCQ = 'MCQ',
-  TRUE_FALSE = 'TRUE_FALSE',
-  SHORT_ANSWER = 'SHORT_ANSWER',
-  WRITTEN = 'WRITTEN',
-  PDF = 'PDF',
-}
-
-export enum ExamStatus {
-  DRAFT = 'DRAFT',
-  PUBLISHED = 'PUBLISHED',
-  ARCHIVED = 'ARCHIVED',
-}
-
-export enum AttemptStatus {
-  IN_PROGRESS = 'IN_PROGRESS',
-  SUBMITTED = 'SUBMITTED',
-}
-
 export enum SessionStatus {
   SCHEDULED = 'SCHEDULED',
   LIVE = 'LIVE',
@@ -89,18 +69,6 @@ export enum AttendanceStatus {
   ABSENT = 'ABSENT',
   LATE = 'LATE',
   EXCUSED = 'EXCUSED',
-}
-
-export enum PaymentPurpose {
-  ORDER = 'ORDER',
-  ENROLLMENT = 'ENROLLMENT',
-}
-
-export enum PaymentStatus {
-  PENDING = 'PENDING',
-  PAID = 'PAID',
-  FAILED = 'FAILED',
-  CANCELLED = 'CANCELLED',
 }
 
 export enum MonthlyPaymentStatus {
@@ -138,4 +106,11 @@ export enum ResourceCategory {
   THEORY_SUGGESTION = 'THEORY_SUGGESTION',
   EXAM = 'EXAM',
   ASSIGNMENT = 'ASSIGNMENT',
+  QUESTION_BANK = 'QUESTION_BANK',
+}
+
+export enum ResourceSubmissionStatus {
+  PENDING = 'PENDING',
+  ACCEPTED = 'ACCEPTED',
+  REJECTED = 'REJECTED',
 }

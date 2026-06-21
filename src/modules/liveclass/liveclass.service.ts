@@ -41,13 +41,6 @@ type UpdateLiveClassScheduleInput = z.infer<typeof updateLiveClassScheduleSchema
 
 const sessionInclude = { recording: true } as const
 
-async function isBatchInstructor(batchId: string, userId: string): Promise<boolean> {
-  const row = await prisma.batchInstructor.findUnique({
-    where: { batchId_instructorId: { batchId, instructorId: userId } },
-  })
-  return !!row
-}
-
 async function isEnrolledInBatch(studentId: string, batchId: string): Promise<boolean> {
   const row = await prisma.enrollment.findFirst({
     where: {
@@ -68,7 +61,6 @@ async function assertBatchSessionAccess(
   batchId: string,
 ): Promise<void> {
   if (isAdminStaff(role)) return
-  if (role === Role.INSTRUCTOR && (await isBatchInstructor(batchId, userId))) return
   if (role === Role.STUDENT && (await isEnrolledInBatch(userId, batchId))) return
   throw forbidden('Not allowed to access this batch')
 }
@@ -79,9 +71,8 @@ async function assertBatchEnrolled(studentId: string, batchId: string): Promise<
   }
 }
 
-async function assertCanManageBatch(userId: string, role: Role, batchId: string): Promise<void> {
+async function assertCanManageBatch(_userId: string, role: Role, _batchId: string): Promise<void> {
   if (isAdminStaff(role)) return
-  if (role === Role.INSTRUCTOR && (await isBatchInstructor(batchId, userId))) return
   throw forbidden('Not allowed to manage this batch')
 }
 

@@ -35,13 +35,6 @@ const batchInclude = {
       faq: true,
     },
   },
-  instructors: {
-    include: {
-      instructor: {
-        select: { id: true, name: true, avatarUrl: true },
-      },
-    },
-  },
 } satisfies Prisma.BatchInclude
 
 const PUBLIC_STATUSES: BatchStatus[] = [
@@ -71,24 +64,6 @@ async function validateLiveCourse(courseId: string): Promise<void> {
   }
 }
 
-async function validateInstructorIds(instructorIds: string[]): Promise<void> {
-  if (!instructorIds.length) return
-
-  const users = await prisma.user.findMany({
-    where: {
-      id: { in: instructorIds },
-      deletedAt: null,
-      isActive: true,
-      role: { in: [Role.INSTRUCTOR, Role.ADMIN, Role.SUPER_ADMIN] },
-    },
-    select: { id: true },
-  })
-
-  if (users.length !== instructorIds.length) {
-    throw validationError('One or more instructor IDs are invalid')
-  }
-}
-
 async function findBatchOrThrow(idOrSlug: string) {
   const batch = await prisma.batch.findFirst({
     where: {
@@ -103,19 +78,9 @@ async function findBatchOrThrow(idOrSlug: string) {
   return batch
 }
 
-async function syncInstructors(batchId: string, instructorIds: string[]): Promise<void> {
-  await prisma.batchInstructor.deleteMany({ where: { batchId } })
-  if (!instructorIds.length) return
-
-  await prisma.batchInstructor.createMany({
-    data: instructorIds.map((instructorId) => ({ batchId, instructorId })),
-  })
-}
-
 export async function listBatches(
   query: BatchListQuery,
   role?: Role,
-  instructorUserId?: string,
 ): Promise<ApiListResponse<BatchListItem>> {
   const { page, pageSize, search, status, courseId, categoryId, year, sort } = query
   const where: Prisma.BatchWhereInput = {
@@ -129,9 +94,6 @@ export async function listBatches(
             lt: new Date(`${year + 1}-01-01T00:00:00.000Z`),
           },
         }
-      : {}),
-    ...(role === Role.INSTRUCTOR && instructorUserId
-      ? { instructors: { some: { instructorId: instructorUserId } } }
       : {}),
     ...(canViewProtectedContent(role)
       ? status
@@ -219,19 +181,11 @@ export async function createBatch(input: CreateBatchInput): Promise<BatchDetailD
       return existing !== null
     }))
 
-  const { instructorIds, slug: _slug, ...batchData } = input
-
-  if (instructorIds?.length) {
-    await validateInstructorIds(instructorIds)
-  }
+  const { slug: _slug, ...batchData } = input
 
   const batch = await prisma.batch.create({
     data: { ...batchData, slug },
   })
-
-  if (instructorIds?.length) {
-    await syncInstructors(batch.id, instructorIds)
-  }
 
   return getBatchByIdOrSlug(batch.id, Role.ADMIN)
 }
@@ -265,20 +219,10 @@ export async function updateBatch(id: string, input: UpdateBatchInput): Promise<
     }
   }
 
-  const { instructorIds, ...batchData } = input
-
-  if (instructorIds !== undefined) {
-    await validateInstructorIds(instructorIds)
-  }
-
   await prisma.batch.update({
     where: { id },
-    data: batchData,
+    data: input,
   })
-
-  if (instructorIds !== undefined) {
-    await syncInstructors(id, instructorIds)
-  }
 
   return getBatchByIdOrSlug(id, Role.ADMIN)
 }

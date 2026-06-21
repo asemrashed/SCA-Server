@@ -24,7 +24,6 @@ type ReviewEnrollmentInput = z.infer<typeof reviewEnrollmentSchema>
 const lessonOrder = { orderBy: { order: 'asc' as const } }
 
 const batchContentInclude = {
-  instructors: { include: { instructor: { select: { name: true } } } },
   course: { select: { id: true, title: true } },
   subjects: {
     orderBy: { order: 'asc' as const },
@@ -45,7 +44,6 @@ const courseContentInclude = {
 } satisfies Prisma.CourseInclude
 
 const enrollmentInclude = {
-  lessonProgress: true,
   batch: { include: batchContentInclude },
   course: { include: courseContentInclude },
 } satisfies Prisma.EnrollmentInclude
@@ -63,37 +61,6 @@ function assertEnrollmentRow(row: {
     return row as EnrollmentWithRelations
   }
   throw notFound('Enrollment not found')
-}
-
-function allLessonIds(row: EnrollmentWithRelations): string[] {
-  if (row.batchId && row.batch) {
-    return row.batch.subjects.flatMap((s) =>
-      s.modules.flatMap((m) => m.lessons.map((l) => l.id)),
-    )
-  }
-  return row.course!.modules.flatMap((m) => m.lessons.map((l) => l.id))
-}
-
-async function recomputeProgress(enrollmentId: string): Promise<void> {
-  const enrollment = await prisma.enrollment.findUnique({
-    where: { id: enrollmentId },
-    include: enrollmentInclude,
-  })
-  if (!enrollment) return
-
-  const row = assertEnrollmentRow(enrollment)
-  const lessonIds = allLessonIds(row)
-  const total = lessonIds.length
-  const completed = row.lessonProgress.filter((p) => p.completed).length
-  const progressPct = total === 0 ? 0 : Math.round((completed / total) * 100)
-
-  await prisma.enrollment.update({
-    where: { id: enrollmentId },
-    data: {
-      progressPct,
-      ...(progressPct === 100 ? { status: EnrollmentStatus.COMPLETED, completedAt: new Date() } : {}),
-    },
-  })
 }
 
 async function findEnrollmentForStudent(
@@ -132,10 +99,7 @@ export async function getMyEnrollment(
   const grantedBatchIds = row.batchId ? await getGrantedSourceBatchIds(row.batchId) : []
   const grantedSubjects =
     grantedBatchIds.length > 0
-      ? mapSubjectsToEnrollmentDto(
-          await loadSubjectsForBatchIds(grantedBatchIds),
-          new Map(row.lessonProgress.map((p) => [p.lessonId, p.completed])),
-        )
+      ? mapSubjectsToEnrollmentDto(await loadSubjectsForBatchIds(grantedBatchIds))
       : []
 
   return toEnrollmentDetail(row, grantedBatchIds, grantedSubjects, isAccessBlocked)
@@ -229,86 +193,6 @@ export async function createEnrollment(
     include: enrollmentInclude,
   })
   return toEnrollmentListItem(assertEnrollmentRow(enrollment))
-}
-
-export async function markLessonComplete(
-  studentId: string,
-  lessonId: string,
-): Promise<{ progressPct: number }> {
-  const lesson = await prisma.lesson.findUnique({
-    where: { id: lessonId },
-    include: { module: { include: { subject: true } } },
-  })
-  if (!lesson) {
-    throw notFound('Lesson not found')
-  }
-
-  const module = lesson.module
-  let enrollment = null
-
-  if (module.courseId) {
-    enrollment = await prisma.enrollment.findFirst({
-      where: {
-        studentId,
-        courseId: module.courseId,
-        status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
-      },
-    })
-  } else if (module.subjectId && module.subject) {
-    enrollment = await prisma.enrollment.findFirst({
-      where: {
-        studentId,
-        batchId: module.subject.batchId,
-        status: { in: [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED] },
-      },
-    })
-  }
-
-  if (!enrollment) {
-    throw forbidden('Not enrolled in this content')
-  }
-  if (await isEnrollmentPaymentBlocked(enrollment.id, enrollment.batchId)) {
-    throw forbidden('Course access is blocked until this month\'s fee is paid')
-  }
-
-  await prisma.lessonProgress.upsert({
-    where: {
-      enrollmentId_lessonId: { enrollmentId: enrollment.id, lessonId },
-    },
-    create: {
-      enrollmentId: enrollment.id,
-      lessonId,
-      completed: true,
-      completedAt: new Date(),
-    },
-    update: {
-      completed: true,
-      completedAt: new Date(),
-    },
-  })
-
-  await recomputeProgress(enrollment.id)
-
-  const updated = await prisma.enrollment.findUnique({ where: { id: enrollment.id } })
-  return { progressPct: updated?.progressPct ?? 0 }
-}
-
-type DbClient = typeof prisma | Prisma.TransactionClient
-
-/** @deprecated Enrollment activation is manual via admin approval. Kept for legacy payment webhook only. */
-export async function activateEnrollmentAfterPayment(
-  enrollmentId: string,
-  db: DbClient = prisma,
-): Promise<void> {
-  const enrollment = await db.enrollment.findUnique({ where: { id: enrollmentId } })
-  if (!enrollment || enrollment.status !== EnrollmentStatus.PENDING) {
-    return
-  }
-
-  await db.enrollment.update({
-    where: { id: enrollmentId },
-    data: { status: EnrollmentStatus.ACTIVE },
-  })
 }
 
 const activeEnrollmentStatuses = [EnrollmentStatus.ACTIVE, EnrollmentStatus.COMPLETED]
