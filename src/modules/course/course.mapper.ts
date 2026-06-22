@@ -1,6 +1,7 @@
 import type { Batch, Course, Lesson, Module } from '@prisma/client'
 import type { DeliveryMode, LessonType } from '../../shared/enums.js'
 import { DeliveryMode as DeliveryModeEnum } from '../../shared/enums.js'
+import { lessonVisibilityFields } from '../../shared/lesson-visibility.js'
 
 type LessonRow = Lesson
 type ModuleWithLessons = Module & { lessons: LessonRow[] }
@@ -43,6 +44,7 @@ export interface CourseLessonDto {
   order: number
   isPreview: boolean
   hasVideo: boolean
+  hasDocument: boolean
   videoUrl?: string | null
   content?: string | null
 }
@@ -141,6 +143,9 @@ function formatLectureDate(date: Date): string {
 }
 
 function toLessonDto(lesson: LessonRow, includeProtectedFields: boolean): CourseLessonDto {
+  const canAccessContent = includeProtectedFields || lesson.isPreview
+  const visibility = lessonVisibilityFields(lesson, canAccessContent)
+
   const base: CourseLessonDto = {
     id: lesson.id,
     title: lesson.title,
@@ -149,7 +154,9 @@ function toLessonDto(lesson: LessonRow, includeProtectedFields: boolean): Course
     lectureDate: lesson.lectureDate ? formatLectureDate(lesson.lectureDate) : null,
     order: lesson.order,
     isPreview: lesson.isPreview,
-    hasVideo: !!lesson.videoUrl && (includeProtectedFields || lesson.isPreview),
+    hasVideo: visibility.hasVideo,
+    hasDocument: visibility.hasDocument,
+    content: visibility.content,
   }
 
   if (includeProtectedFields) {

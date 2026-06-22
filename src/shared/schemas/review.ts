@@ -23,6 +23,7 @@ export const listAdminReviewsQuerySchema = z.object({
 })
 
 export const listPublicReviewsQuerySchema = z.object({
+  courseId: z.string().min(1).optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(50).default(20),
 })

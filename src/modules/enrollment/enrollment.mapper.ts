@@ -52,6 +52,8 @@ export interface EnrollmentLessonDto {
   title: string
   type: LessonType
   hasVideo: boolean
+  hasDocument: boolean
+  content: string | null
   durationS: number | null
   lectureDate: string | null
   order: number
@@ -77,7 +79,9 @@ export interface EnrollmentDetailDto {
   deliveryMode: DeliveryMode
   status: EnrollmentStatus
   rollNumber: string | null
-  batch: { id: string; title: string; courseId: string } | null
+  enrolledAt: string
+  completedAt: string | null
+  batch: { id: string; title: string; courseId: string; endDate: string | null } | null
   course: { id: string; title: string } | null
   subjects?: EnrollmentSubjectDto[]
   grantedSubjects?: EnrollmentSubjectDto[]
@@ -112,11 +116,18 @@ function formatLectureDate(date: Date): string {
 }
 
 function toLessonDto(lesson: LessonRow): EnrollmentLessonDto {
+  const type = lesson.type as LessonType
+  const hasVideoUrl = !!lesson.videoUrl
+  const textContent = lesson.content?.trim() ?? ''
+
   return {
     id: lesson.id,
     title: lesson.title,
-    type: lesson.type as LessonType,
-    hasVideo: !!lesson.videoUrl,
+    type,
+    hasVideo:
+      (type === LessonType.RECORDED || type === LessonType.LIVE) && hasVideoUrl,
+    hasDocument: type === LessonType.DOCUMENT && hasVideoUrl,
+    content: type === LessonType.TEXT && textContent ? lesson.content : null,
     durationS: lesson.durationS,
     lectureDate: lesson.lectureDate ? formatLectureDate(lesson.lectureDate) : null,
     order: lesson.order,
@@ -185,10 +196,13 @@ export function toEnrollmentDetail(
       deliveryMode: DeliveryMode.LIVE,
       status: row.status as EnrollmentStatus,
       rollNumber: row.rollNumber,
+      enrolledAt: row.enrolledAt.toISOString(),
+      completedAt: row.completedAt?.toISOString() ?? null,
       batch: {
         id: row.batch.id,
         title: row.batch.title,
         courseId: row.batch.courseId,
+        endDate: row.batch.endDate?.toISOString() ?? null,
       },
       course: null,
       subjects: mapSubjectsToEnrollmentDto(row.batch.subjects),
@@ -204,6 +218,8 @@ export function toEnrollmentDetail(
     deliveryMode: DeliveryMode.RECORDED,
     status: row.status as EnrollmentStatus,
     rollNumber: row.rollNumber,
+    enrolledAt: row.enrolledAt.toISOString(),
+    completedAt: row.completedAt?.toISOString() ?? null,
     batch: null,
     course: { id: row.course!.id, title: row.course!.title },
     modules: row.course!.modules.map((mod) => ({

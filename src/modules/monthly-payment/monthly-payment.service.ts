@@ -407,6 +407,54 @@ export async function listMonthlyPayments(
   }
 }
 
+export interface AdminPaymentSummaryDto {
+  totalRevenueMinor: number
+  totalDueMinor: number
+  currentBillingMonth: string
+  unpaidStudentCount: number
+}
+
+export async function getAdminPaymentSummary(): Promise<AdminPaymentSummaryDto> {
+  const billingMonth = currentBillingMonth()
+
+  const [revenueAgg, approvedRows] = await Promise.all([
+    prisma.monthlyPayment.aggregate({
+      where: {
+        status: MonthlyPaymentStatus.APPROVED,
+        amountMinor: { not: null },
+      },
+      _sum: { amountMinor: true },
+    }),
+    prisma.monthlyPayment.findMany({
+      where: { billingMonth, status: MonthlyPaymentStatus.APPROVED },
+      select: { enrollmentId: true },
+    }),
+  ])
+
+  const paidEnrollmentIds = approvedRows.map((row) => row.enrollmentId)
+  const unpaidWhere = buildUnpaidEnrollmentWhere(
+    { page: 1, pageSize: 1 },
+    paidEnrollmentIds,
+  )
+
+  const unpaidEnrollments = await prisma.enrollment.findMany({
+    where: unpaidWhere,
+    select: { batch: { select: { priceMinor: true } } },
+  })
+
+  const totalDueMinor = unpaidEnrollments.reduce(
+    (sum, row) => sum + (row.batch?.priceMinor ?? 0),
+    0,
+  )
+
+  return {
+    totalRevenueMinor: revenueAgg._sum.amountMinor ?? 0,
+    totalDueMinor,
+    currentBillingMonth: billingMonth,
+    unpaidStudentCount: unpaidEnrollments.length,
+  }
+}
+
 export async function reviewMonthlyPayment(
   adminId: string,
   paymentId: string,

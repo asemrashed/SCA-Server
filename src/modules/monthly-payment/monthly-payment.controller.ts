@@ -37,6 +37,19 @@ export async function requestPayment(
   }
 }
 
+export async function getSummary(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const data = await service.getAdminPaymentSummary()
+    res.json({ data })
+  } catch (err) {
+    next(err)
+  }
+}
+
 export async function listAdmin(
   req: Request,
   res: Response,

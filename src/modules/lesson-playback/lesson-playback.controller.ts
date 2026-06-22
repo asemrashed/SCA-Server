@@ -79,6 +79,30 @@ export async function stream(req: Request, res: Response, next: NextFunction): P
   }
 }
 
+export async function documentStream(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const auth = req.auth ?? getOptionalAuth(req)
+    const { buffer, contentType, title } = await service.streamLessonDocument(
+      auth.userId ?? '',
+      auth.role ?? ('STUDENT' as Role),
+      param(req.params.lessonId),
+    )
+
+    const safeName = title.replace(/[^\w\s.-]/g, '').trim() || 'document'
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`)
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.send(buffer)
+  } catch (err) {
+    next(err)
+  }
+}
+
 export async function thumbnail(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const auth = req.auth ?? getOptionalAuth(req)

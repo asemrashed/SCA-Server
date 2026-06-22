@@ -28,6 +28,13 @@ meMonthlyPaymentRouter.post(
 )
 
 adminMonthlyPaymentRouter.get(
+  '/summary',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  controller.getSummary,
+)
+
+adminMonthlyPaymentRouter.get(
   '/unpaid-students',
   authenticate,
   requireRole(...ADMIN_ROLES),

@@ -3,7 +3,7 @@ import type { z } from 'zod'
 import { prisma } from '../../config/db.js'
 import { conflict, forbidden, notFound, validationError } from '../../lib/errors.js'
 import { BatchStatus, DeliveryMode, EnrollmentStatus } from '../../shared/enums.js'
-import { createEnrollmentSchema, reviewEnrollmentSchema } from '../../shared/schemas/enrollment.js'
+import { createEnrollmentSchema, reviewEnrollmentSchema, type ListAdminEnrollmentsQuery } from '../../shared/schemas/enrollment.js'
 import { loadSubjectsForBatchIds } from '../batch/batch.curriculum.service.js'
 import { getGrantedSourceBatchIds } from './enrollment.access.js'
 import { isEnrollmentPaymentBlocked } from '../monthly-payment/monthly-payment.utils.js'
@@ -228,15 +228,62 @@ const adminEnrollmentInclude = {
   },
 } satisfies Prisma.EnrollmentInclude
 
-export async function listAdminEnrollmentRequests(
-  status: EnrollmentStatus = EnrollmentStatus.PENDING,
-): Promise<AdminEnrollmentRequestDto[]> {
-  const rows = await prisma.enrollment.findMany({
-    where: { status },
-    include: adminEnrollmentInclude,
-    orderBy: { enrolledAt: 'desc' },
+export interface AdminEnrollmentOverviewDto {
+  total: number
+  pending: number
+  active: number
+  cancelled: number
+  completed: number
+}
+
+export async function getAdminEnrollmentOverview(): Promise<AdminEnrollmentOverviewDto> {
+  const grouped = await prisma.enrollment.groupBy({
+    by: ['status'],
+    _count: { _all: true },
   })
-  return rows.map((row) => toAdminEnrollmentRequest(row))
+
+  const counts = Object.fromEntries(
+    grouped.map((row) => [row.status, row._count._all]),
+  ) as Partial<Record<EnrollmentStatus, number>>
+
+  const pending = counts[EnrollmentStatus.PENDING] ?? 0
+  const active = counts[EnrollmentStatus.ACTIVE] ?? 0
+  const cancelled = counts[EnrollmentStatus.CANCELLED] ?? 0
+  const completed = counts[EnrollmentStatus.COMPLETED] ?? 0
+
+  return {
+    total: pending + active + cancelled + completed,
+    pending,
+    active,
+    cancelled,
+    completed,
+  }
+}
+
+export async function listAdminEnrollmentRequests(
+  query: ListAdminEnrollmentsQuery,
+): Promise<{
+  data: AdminEnrollmentRequestDto[]
+  meta: { total: number; page: number; pageSize: number }
+}> {
+  const where = query.status ? { status: query.status } : {}
+  const skip = (query.page - 1) * query.pageSize
+
+  const [rows, total] = await Promise.all([
+    prisma.enrollment.findMany({
+      where,
+      include: adminEnrollmentInclude,
+      orderBy: { enrolledAt: 'desc' },
+      skip,
+      take: query.pageSize,
+    }),
+    prisma.enrollment.count({ where }),
+  ])
+
+  return {
+    data: rows.map((row) => toAdminEnrollmentRequest(row)),
+    meta: { total, page: query.page, pageSize: query.pageSize },
+  }
 }
 
 export async function reviewEnrollmentRequest(

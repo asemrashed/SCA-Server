@@ -1,5 +1,6 @@
 import type { Lesson, Module, Subject } from '@prisma/client'
 import type { LessonType } from '../../shared/enums.js'
+import { lessonVisibilityFields } from '../../shared/lesson-visibility.js'
 
 type LessonRow = Lesson
 type ModuleWithLessons = Module & { lessons: LessonRow[] }
@@ -14,6 +15,7 @@ export interface CurriculumLessonDto {
   order: number
   isPreview: boolean
   hasVideo: boolean
+  hasDocument: boolean
   videoUrl?: string | null
   content?: string | null
 }
@@ -49,6 +51,9 @@ export function toCurriculumSubjects(
       title: mod.title,
       order: mod.order,
       lessons: mod.lessons.map((lesson) => {
+        const canAccessContent = includeProtectedFields || lesson.isPreview
+        const visibility = lessonVisibilityFields(lesson, canAccessContent)
+
         const base: CurriculumLessonDto = {
           id: lesson.id,
           title: lesson.title,
@@ -57,7 +62,9 @@ export function toCurriculumSubjects(
           lectureDate: lesson.lectureDate ? formatLectureDate(lesson.lectureDate) : null,
           order: lesson.order,
           isPreview: lesson.isPreview,
-          hasVideo: !!lesson.videoUrl && (includeProtectedFields || lesson.isPreview),
+          hasVideo: visibility.hasVideo,
+          hasDocument: visibility.hasDocument,
+          content: visibility.content,
         }
 
         if (includeProtectedFields) {

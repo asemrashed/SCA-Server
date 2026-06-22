@@ -37,6 +37,12 @@ meEnrollmentRouter.get(
 )
 
 adminEnrollmentRouter.get(
+  '/overview',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  controller.getAdminOverview,
+)
+adminEnrollmentRouter.get(
   '/',
   authenticate,
   requireRole(...ADMIN_ROLES),

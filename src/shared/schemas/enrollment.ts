@@ -12,7 +12,11 @@ export const createEnrollmentSchema = z
 
 export const listAdminEnrollmentsQuerySchema = z.object({
   status: z.nativeEnum(EnrollmentStatus).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
 })
+
+export type ListAdminEnrollmentsQuery = z.infer<typeof listAdminEnrollmentsQuerySchema>
 
 export const reviewEnrollmentSchema = z
   .object({

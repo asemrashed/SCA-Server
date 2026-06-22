@@ -1,7 +1,7 @@
 import { prisma } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { forbidden, notFound, validationError } from '../../lib/errors.js'
-import type { Role } from '../../shared/enums.js'
+import { LessonType, type Role } from '../../shared/enums.js'
 import { isStaff } from '../../shared/roles.js'
 import {
   assertStudentCourseContentAccess,
@@ -17,7 +17,9 @@ import {
 type LessonRow = {
   id: string
   title: string
+  type: string
   videoUrl: string | null
+  content: string | null
   isPreview: boolean
   module: {
     courseId: string | null
@@ -25,26 +27,49 @@ type LessonRow = {
   }
 }
 
+const lessonSelect = {
+  id: true,
+  title: true,
+  type: true,
+  videoUrl: true,
+  content: true,
+  isPreview: true,
+  module: {
+    select: {
+      courseId: true,
+      subject: { select: { batch: { select: { courseId: true } } } },
+    },
+  },
+} as const
+
 async function getLessonOrThrow(lessonId: string): Promise<LessonRow> {
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
-    select: {
-      id: true,
-      title: true,
-      videoUrl: true,
-      isPreview: true,
-      module: {
-        select: {
-          courseId: true,
-          subject: { select: { batch: { select: { courseId: true } } } },
-        },
-      },
-    },
+    select: lessonSelect,
   })
-  if (!lesson?.videoUrl) {
-    throw notFound('Lesson video not found')
+  if (!lesson) {
+    throw notFound('Lesson not found')
   }
   return lesson
+}
+
+function assertVideoLesson(lesson: LessonRow): void {
+  const type = lesson.type as LessonType
+  if (type !== LessonType.RECORDED && type !== LessonType.LIVE) {
+    throw validationError('This lesson is not a video lesson')
+  }
+  if (!lesson.videoUrl) {
+    throw notFound('Lesson video not found')
+  }
+}
+
+function assertDocumentLesson(lesson: LessonRow): void {
+  if ((lesson.type as LessonType) !== LessonType.DOCUMENT) {
+    throw validationError('This lesson is not a document lesson')
+  }
+  if (!lesson.videoUrl) {
+    throw notFound('Lesson document not found')
+  }
 }
 
 function resolveCourseId(lesson: LessonRow): string | null {
@@ -75,6 +100,7 @@ export async function getLessonPlayMeta(
   lessonId: string,
 ): Promise<{ kind: ParsedVideoSource['kind']; title: string }> {
   const lesson = await getLessonOrThrow(lessonId)
+  assertVideoLesson(lesson)
   await assertCanPlayLesson(userId, role, lesson)
   const source = parseVideoUrl(lesson.videoUrl!)
   if (!source) {
@@ -91,6 +117,7 @@ export async function getLessonEmbedHtml(
   autoplay: boolean,
 ): Promise<{ html: string; kind: ParsedVideoSource['kind'] }> {
   const lesson = await getLessonOrThrow(lessonId)
+  assertVideoLesson(lesson)
   await assertCanPlayLesson(userId, role, lesson)
 
   const source = parseVideoUrl(lesson.videoUrl!)
@@ -116,6 +143,7 @@ export async function streamLessonVideo(
   lessonId: string,
 ): Promise<{ buffer: Buffer; contentType: string; title: string }> {
   const lesson = await getLessonOrThrow(lessonId)
+  assertVideoLesson(lesson)
   await assertCanPlayLesson(userId, role, lesson)
 
   const source = parseVideoUrl(lesson.videoUrl!)
@@ -139,6 +167,7 @@ export async function streamLessonThumbnail(
   lessonId: string,
 ): Promise<{ buffer: Buffer; contentType: string } | null> {
   const lesson = await getLessonOrThrow(lessonId)
+  assertVideoLesson(lesson)
   await assertCanPlayLesson(userId, role, lesson)
 
   const source = parseVideoUrl(lesson.videoUrl!)
@@ -164,6 +193,25 @@ export async function streamLessonThumbnail(
   }
 }
 
+export async function streamLessonDocument(
+  userId: string | undefined,
+  role: Role | undefined,
+  lessonId: string,
+): Promise<{ buffer: Buffer; contentType: string; title: string }> {
+  const lesson = await getLessonOrThrow(lessonId)
+  assertDocumentLesson(lesson)
+  await assertCanPlayLesson(userId, role, lesson)
+
+  const upstream = await fetch(lesson.videoUrl!)
+  if (!upstream.ok) {
+    throw notFound('Document could not be loaded')
+  }
+
+  const buffer = Buffer.from(await upstream.arrayBuffer())
+  const contentType = upstream.headers.get('content-type') ?? 'application/pdf'
+  return { buffer, contentType, title: lesson.title }
+}
+
 export async function canPlayLesson(
   userId: string | undefined,
   role: Role | undefined,
@@ -171,6 +219,7 @@ export async function canPlayLesson(
 ): Promise<boolean> {
   try {
     const lesson = await getLessonOrThrow(lessonId)
+    assertVideoLesson(lesson)
     if (lesson.isPreview) return true
     if (role && isStaff(role)) return true
     const courseId = resolveCourseId(lesson)

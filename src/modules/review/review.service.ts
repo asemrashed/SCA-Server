@@ -87,7 +87,10 @@ async function assertActiveEnrollment(
 export async function listPublicReviews(
   query: ListPublicReviewsQuery,
 ): Promise<{ data: ReviewPublicDto[]; meta: { page: number; pageSize: number; total: number } }> {
-  const where: Prisma.ReviewWhereInput = { status: ReviewStatus.ACTIVE }
+  const where: Prisma.ReviewWhereInput = {
+    status: ReviewStatus.ACTIVE,
+    ...(query.courseId ? { courseId: query.courseId } : {}),
+  }
   const [rows, total] = await Promise.all([
     prisma.review.findMany({
       where,
