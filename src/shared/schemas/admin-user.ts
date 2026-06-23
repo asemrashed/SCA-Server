@@ -3,6 +3,7 @@ import { Role } from '../enums.js'
 
 const e164Phone = z
   .string()
+  .trim()
   .regex(/^\+8801[3-9]\d{8}$/, 'Use BD format: +8801XXXXXXXXX')
 
 export const listAdminUsersQuerySchema = z.object({
@@ -14,9 +15,9 @@ export const listAdminUsersQuerySchema = z.object({
 })
 
 export const createAdminUserSchema = z.object({
-  name: z.string().min(1).max(120),
+  name: z.string().trim().min(1).max(120),
   phone: e164Phone,
-  password: z.string().min(8).max(128),
+  password: z.string().trim().min(8).max(128),
   email: z.string().email().optional().nullable(),
   role: z.enum([Role.ADMIN, Role.STUDENT]),
 })

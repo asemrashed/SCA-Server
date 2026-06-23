@@ -2,17 +2,18 @@ import { z } from 'zod'
 
 const e164Phone = z
   .string()
+  .trim()
   .regex(/^\+8801[3-9]\d{8}$/, 'Phone must be E.164 Bangladesh format (+8801XXXXXXXXX)')
 
 export const registerSchema = z.object({
-  name: z.string().min(2).max(100),
+  name: z.string().trim().min(2).max(100),
   phone: e164Phone,
-  password: z.string().min(8).max(128),
+  password: z.string().trim().min(8).max(128),
 })
 
 export const loginSchema = z.object({
   phone: e164Phone,
-  password: z.string().min(1),
+  password: z.string().trim().min(1),
 })
 
 export const requestPasswordResetSchema = z.object({
@@ -21,17 +22,17 @@ export const requestPasswordResetSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   phone: e164Phone,
-  otp: z.string().length(6),
-  newPassword: z.string().min(8).max(128),
+  otp: z.string().trim().length(6),
+  newPassword: z.string().trim().min(8).max(128),
 })
 
 export const verifyPhoneSchema = z.object({
   phone: e164Phone,
-  otp: z.string().length(6),
+  otp: z.string().trim().length(6),
 })
 
 export const updateMeSchema = z.object({
-  name: z.string().min(2).max(100).optional(),
+  name: z.string().trim().min(2).max(100).optional(),
   email: z.string().email().nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
 })
