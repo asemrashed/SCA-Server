@@ -6,7 +6,7 @@ import cookieParser from 'cookie-parser'
 
 const require = createRequire(import.meta.url)
 const helmet = require('helmet') as () => RequestHandler
-import { env } from './config/env.js'
+import { env, corsOrigins } from './config/env.js'
 import { errorHandler } from './middleware/error.js'
 import { authRouter } from './modules/auth/auth.routes.js'
 import { batchRouter } from './modules/batch/batch.routes.js'
@@ -53,7 +53,7 @@ export function createApp() {
   app.use(helmet())
   app.use(
     cors({
-      origin: env.CORS_ORIGIN,
+      origin: corsOrigins(),
       credentials: true,
     }),
   )

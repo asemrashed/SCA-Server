@@ -1,5 +1,5 @@
 import { prisma } from '../../config/db.js'
-import { env } from '../../config/env.js'
+import { corsOrigins } from '../../config/env.js'
 import { forbidden, notFound, validationError } from '../../lib/errors.js'
 import { LessonType, type Role } from '../../shared/enums.js'
 import { isStaff } from '../../shared/roles.js'
@@ -128,7 +128,7 @@ export async function getLessonEmbedHtml(
     throw validationError('Use the stream endpoint for file videos')
   }
 
-  const safeOrigin = clientOrigin || env.CORS_ORIGIN
+  const safeOrigin = clientOrigin || corsOrigins()[0]
   const html =
     source.kind === 'youtube'
       ? buildYoutubeBridgeHtml(source.videoId, safeOrigin, autoplay)

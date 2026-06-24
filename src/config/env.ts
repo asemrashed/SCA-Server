@@ -28,6 +28,13 @@ function loadEnv(): Env {
 
 export const env = loadEnv()
 
+/** Comma-separated CORS_ORIGIN — e.g. `https://www.example.com,https://example.com` */
+export function corsOrigins(): string[] {
+  return env.CORS_ORIGIN.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+}
+
 const MOCK_CLOUDINARY_VALUES = new Set(['mock_cloud_name', 'mock_api_key', 'mock_api_secret'])
 
 /** True when real Cloudinary credentials are set (not placeholder mock values). */
