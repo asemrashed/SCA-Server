@@ -51,11 +51,19 @@ export async function register(input: RegisterInput): Promise<AuthSession> {
     throw conflict('Phone number is already registered')
   }
 
+  const emailTaken = await prisma.user.findFirst({
+    where: { email: input.email, deletedAt: null },
+  })
+  if (emailTaken) {
+    throw conflict('Email is already registered')
+  }
+
   const passwordHash = await argon2.hash(input.password)
   const user = await prisma.user.create({
     data: {
       name: input.name,
       phone: input.phone,
+      email: input.email,
       passwordHash,
       phoneVerified: true,
     },

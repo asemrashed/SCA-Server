@@ -8,6 +8,7 @@ const e164Phone = z
 export const registerSchema = z.object({
   name: z.string().trim().min(2).max(100),
   phone: e164Phone,
+  email: z.string().trim().email(),
   password: z.string().trim().min(8).max(128),
 })
 
