@@ -7,6 +7,7 @@ import { ADMIN_ROLES } from '../../shared/roles.js'
 import {
   createEnrollmentSchema,
   listAdminEnrollmentsQuerySchema,
+  manualEnrollmentSchema,
   reviewEnrollmentSchema,
 } from '../../shared/schemas/enrollment.js'
 import * as controller from './enrollment.controller.js'
@@ -41,6 +42,13 @@ adminEnrollmentRouter.get(
   authenticate,
   requireRole(...ADMIN_ROLES),
   controller.getAdminOverview,
+)
+adminEnrollmentRouter.post(
+  '/',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  validate(manualEnrollmentSchema),
+  controller.createManual,
 )
 adminEnrollmentRouter.get(
   '/',

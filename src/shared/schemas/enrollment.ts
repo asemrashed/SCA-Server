@@ -27,3 +27,16 @@ export const reviewEnrollmentSchema = z
     message: 'rollNumber is required when approving',
     path: ['rollNumber'],
   })
+
+export const manualEnrollmentSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    phone: z.string().trim().min(10).max(20),
+    email: z.string().trim().email().optional().or(z.literal('')),
+    rollNumber: z.string().trim().min(1).max(50),
+    batchId: z.string().cuid().optional(),
+    courseId: z.string().cuid().optional(),
+  })
+  .refine((data) => Boolean(data.batchId) !== Boolean(data.courseId), {
+    message: 'Exactly one of batchId or courseId is required',
+  })

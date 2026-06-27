@@ -76,3 +76,16 @@ export async function reviewRequest(
     next(err)
   }
 }
+
+export async function createManual(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const data = await enrollmentService.createManualEnrollment(req.body)
+    res.status(201).json({ data })
+  } catch (err) {
+    next(err)
+  }
+}

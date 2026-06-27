@@ -1,9 +1,11 @@
 import type { Prisma } from '@prisma/client'
 import type { z } from 'zod'
+import * as argon2 from 'argon2'
+import { randomBytes } from 'node:crypto'
 import { prisma } from '../../config/db.js'
 import { conflict, forbidden, notFound, validationError } from '../../lib/errors.js'
-import { BatchStatus, DeliveryMode, EnrollmentStatus } from '../../shared/enums.js'
-import { createEnrollmentSchema, reviewEnrollmentSchema, type ListAdminEnrollmentsQuery } from '../../shared/schemas/enrollment.js'
+import { BatchStatus, DeliveryMode, EnrollmentStatus, Role } from '../../shared/enums.js'
+import { createEnrollmentSchema, manualEnrollmentSchema, reviewEnrollmentSchema, type ListAdminEnrollmentsQuery } from '../../shared/schemas/enrollment.js'
 import { loadSubjectsForBatchIds } from '../batch/batch.curriculum.service.js'
 import { getGrantedSourceBatchIds } from './enrollment.access.js'
 import { isEnrollmentPaymentBlocked } from '../monthly-payment/monthly-payment.utils.js'
@@ -20,6 +22,7 @@ import {
 
 type CreateEnrollmentInput = z.infer<typeof createEnrollmentSchema>
 type ReviewEnrollmentInput = z.infer<typeof reviewEnrollmentSchema>
+type ManualEnrollmentInput = z.infer<typeof manualEnrollmentSchema>
 
 const lessonOrder = { orderBy: { order: 'asc' as const } }
 
@@ -319,4 +322,134 @@ export async function reviewEnrollmentRequest(
     include: adminEnrollmentInclude,
   })
   return toAdminEnrollmentRequest(updated)
+}
+
+async function findOrCreateStudentForManualEnrollment(
+  input: ManualEnrollmentInput,
+): Promise<string> {
+  const email = input.email?.trim() || null
+
+  const existing = await prisma.user.findUnique({ where: { phone: input.phone } })
+  if (existing) {
+    if (existing.deletedAt || !existing.isActive) {
+      throw validationError('Student account is inactive')
+    }
+    if (existing.role !== Role.STUDENT) {
+      throw validationError('Phone number belongs to a non-student account')
+    }
+
+    const updates: { name?: string; email?: string | null } = {}
+    if (existing.name !== input.name) updates.name = input.name
+    if (email && existing.email !== email) {
+      const emailTaken = await prisma.user.findFirst({
+        where: { email, deletedAt: null, id: { not: existing.id } },
+      })
+      if (emailTaken) {
+        throw conflict('Email is already registered')
+      }
+      updates.email = email
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await prisma.user.update({ where: { id: existing.id }, data: updates })
+    }
+
+    return existing.id
+  }
+
+  if (email) {
+    const emailTaken = await prisma.user.findFirst({
+      where: { email, deletedAt: null },
+    })
+    if (emailTaken) {
+      throw conflict('Email is already registered')
+    }
+  }
+
+  const passwordHash = await argon2.hash(randomBytes(24).toString('hex'))
+  const user = await prisma.user.create({
+    data: {
+      name: input.name,
+      phone: input.phone,
+      email,
+      passwordHash,
+      role: Role.STUDENT,
+      phoneVerified: true,
+    },
+  })
+  return user.id
+}
+
+export async function createManualEnrollment(
+  input: ManualEnrollmentInput,
+): Promise<AdminEnrollmentRequestDto> {
+  const studentId = await findOrCreateStudentForManualEnrollment(input)
+
+  if (input.batchId) {
+    const batch = await prisma.batch.findFirst({
+      where: { id: input.batchId, deletedAt: null },
+      include: { _count: { select: { enrollments: true } } },
+    })
+    if (!batch || batch.status === BatchStatus.DRAFT || batch.status === BatchStatus.CANCELLED) {
+      throw notFound('Batch not found')
+    }
+    if (batch.capacity != null && batch._count.enrollments >= batch.capacity) {
+      throw conflict('Batch is full')
+    }
+
+    const existing = await prisma.enrollment.findFirst({
+      where: {
+        studentId,
+        batchId: input.batchId,
+        status: { not: EnrollmentStatus.CANCELLED },
+      },
+    })
+    if (existing) {
+      throw conflict('Student is already enrolled in this batch')
+    }
+
+    const enrollment = await prisma.enrollment.create({
+      data: {
+        studentId,
+        batchId: input.batchId,
+        status: EnrollmentStatus.ACTIVE,
+        rollNumber: input.rollNumber,
+      },
+      include: adminEnrollmentInclude,
+    })
+    return toAdminEnrollmentRequest(enrollment)
+  }
+
+  const course = await prisma.course.findFirst({
+    where: {
+      id: input.courseId!,
+      deletedAt: null,
+      deliveryMode: DeliveryMode.RECORDED,
+    },
+  })
+  if (!course) {
+    throw notFound('Course not found')
+  }
+
+  const existing = await prisma.enrollment.findFirst({
+    where: {
+      studentId,
+      courseId: input.courseId,
+      status: { not: EnrollmentStatus.CANCELLED },
+    },
+  })
+  if (existing) {
+    throw conflict('Student is already enrolled in this course')
+  }
+
+  const enrollment = await prisma.enrollment.create({
+    data: {
+      studentId,
+      courseId: input.courseId!,
+      status: EnrollmentStatus.ACTIVE,
+      rollNumber: input.rollNumber,
+    },
+    include: adminEnrollmentInclude,
+  })
+  return toAdminEnrollmentRequest(enrollment)
 }
