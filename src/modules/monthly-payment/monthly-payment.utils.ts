@@ -3,6 +3,12 @@ import { MonthlyPaymentStatus } from '../../shared/enums.js'
 
 export const MONTHLY_PAYMENT_DEADLINE_DAY = 20
 
+/** Special billing month key for one-time enrollment fees in MonthlyPayment. */
+export const ENROLLMENT_BILLING_MONTH = 'ENROLLMENT'
+
+/** Default first-month fee for live batch manual enrollment (৳1,000). */
+export const DEFAULT_FIRST_MONTH_FEE_MINOR = 100_000
+
 export function currentBillingMonth(now = new Date()): string {
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
@@ -48,6 +54,19 @@ export async function hasApprovedMonthlyPayment(
   return !!row
 }
 
+export async function hasMonthlyPaymentAccessGrant(
+  enrollmentId: string,
+  billingMonth: string,
+): Promise<boolean> {
+  const row = await prisma.monthlyPaymentAccessGrant.findUnique({
+    where: {
+      enrollmentId_billingMonth: { enrollmentId, billingMonth },
+    },
+    select: { id: true },
+  })
+  return !!row
+}
+
 /** Batch (LIVE) enrollments lose content access after the 20th without an approved monthly payment. */
 export async function isEnrollmentPaymentBlocked(
   enrollmentId: string,
@@ -56,8 +75,21 @@ export async function isEnrollmentPaymentBlocked(
 ): Promise<boolean> {
   if (!batchId) return false
 
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id: enrollmentId },
+    select: { billingStartMonth: true },
+  })
+
   const billingMonth = currentBillingMonth(now)
+
+  if (enrollment?.billingStartMonth && billingMonth < enrollment.billingStartMonth) {
+    return false
+  }
+
   if (!isPastPaymentDeadline(now, billingMonth)) return false
 
-  return !(await hasApprovedMonthlyPayment(enrollmentId, billingMonth))
+  if (await hasApprovedMonthlyPayment(enrollmentId, billingMonth)) return false
+  if (await hasMonthlyPaymentAccessGrant(enrollmentId, billingMonth)) return false
+
+  return true
 }

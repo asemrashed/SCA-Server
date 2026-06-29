@@ -92,3 +92,20 @@ export async function listUnpaidStudents(
     next(err)
   }
 }
+
+export async function setPaymentAccess(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const data = await service.setEnrollmentPaymentAccess(
+      req.auth!.userId,
+      param(req.params.enrollmentId),
+      req.body,
+    )
+    res.json({ data })
+  } catch (err) {
+    next(err)
+  }
+}

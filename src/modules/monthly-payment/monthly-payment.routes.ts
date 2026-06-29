@@ -7,6 +7,7 @@ import { ADMIN_ROLES } from '../../shared/roles.js'
 import {
   listMonthlyPaymentsQuerySchema,
   reviewMonthlyPaymentSchema,
+  setPaymentAccessSchema,
 } from '../../shared/schemas/monthly-payment.js'
 import * as controller from './monthly-payment.controller.js'
 
@@ -40,6 +41,14 @@ adminMonthlyPaymentRouter.get(
   requireRole(...ADMIN_ROLES),
   validate(listMonthlyPaymentsQuerySchema, 'query'),
   controller.listUnpaidStudents,
+)
+
+adminMonthlyPaymentRouter.patch(
+  '/enrollments/:enrollmentId/access',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  validate(setPaymentAccessSchema),
+  controller.setPaymentAccess,
 )
 
 adminMonthlyPaymentRouter.get(

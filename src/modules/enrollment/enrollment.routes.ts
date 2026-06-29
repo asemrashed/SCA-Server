@@ -9,6 +9,7 @@ import {
   listAdminEnrollmentsQuerySchema,
   manualEnrollmentSchema,
   reviewEnrollmentSchema,
+  searchEnrollmentStudentsQuerySchema,
 } from '../../shared/schemas/enrollment.js'
 import * as controller from './enrollment.controller.js'
 
@@ -42,6 +43,13 @@ adminEnrollmentRouter.get(
   authenticate,
   requireRole(...ADMIN_ROLES),
   controller.getAdminOverview,
+)
+adminEnrollmentRouter.get(
+  '/students/search',
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  validate(searchEnrollmentStudentsQuerySchema, 'query'),
+  controller.searchStudents,
 )
 adminEnrollmentRouter.post(
   '/',

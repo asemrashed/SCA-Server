@@ -105,6 +105,7 @@ model User {
   orders                   Order[]
   monthlyPaymentsAsStudent MonthlyPayment[] @relation("MonthlyPaymentStudent")
   monthlyPaymentsReviewed  MonthlyPayment[] @relation("MonthlyPaymentReviewer")
+  monthlyPaymentAccessGrants MonthlyPaymentAccessGrant[] @relation("MonthlyPaymentAccessGranter")
   resourceSubmissions      ResourceSubmission[] @relation("ResourceSubmissionStudent")
   resourceSubmissionsReviewed ResourceSubmission[] @relation("ResourceSubmissionReviewer")
   reviews                  Review[]
@@ -275,10 +276,13 @@ model Enrollment {
   course     Course?          @relation(fields: [courseId], references: [id], onDelete: Cascade)
   status     EnrollmentStatus @default(PENDING)
   rollNumber String?
+  isBlocked  Boolean          @default(false)
+  billingStartMonth String?
   enrolledAt DateTime         @default(now())
   completedAt DateTime?
 
   monthlyPayments MonthlyPayment[]
+  monthlyPaymentAccessGrants MonthlyPaymentAccessGrant[]
   reviews         Review[]
   resourceSubmissions ResourceSubmission[]
 
@@ -503,6 +507,19 @@ model MonthlyPayment {
   @@unique([enrollmentId, billingMonth])
   @@index([studentId])
   @@index([status])
+  @@index([billingMonth])
+}
+
+model MonthlyPaymentAccessGrant {
+  id           String     @id @default(cuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  billingMonth String
+  grantedAt    DateTime   @default(now())
+  grantedById  String
+  grantedBy    User       @relation("MonthlyPaymentAccessGranter", fields: [grantedById], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, billingMonth])
   @@index([billingMonth])
 }
 

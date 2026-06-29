@@ -95,6 +95,7 @@ export interface AdminEnrollmentRequestDto {
   kind: EnrollmentKind
   status: EnrollmentStatus
   rollNumber: string | null
+  isBlocked: boolean
   enrolledAt: string
   student: { id: string; name: string; phone: string }
   batch: { id: string; title: string } | null
@@ -256,6 +257,7 @@ export function toAdminEnrollmentRequest(row: AdminEnrollmentRow): AdminEnrollme
     kind,
     status: row.status as EnrollmentStatus,
     rollNumber: row.rollNumber,
+    isBlocked: row.isBlocked,
     enrolledAt: row.enrolledAt.toISOString(),
     student: {
       id: row.student.id,

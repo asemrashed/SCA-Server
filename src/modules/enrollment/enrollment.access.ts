@@ -12,7 +12,7 @@ async function findActiveEnrollmentForCourse(studentId: string, courseId: string
       status: { in: activeStatuses },
       OR: [{ courseId }, { batch: { courseId } }],
     },
-    select: { id: true, batchId: true },
+    select: { id: true, batchId: true, isBlocked: true },
   })
 }
 
@@ -25,6 +25,9 @@ export async function assertStudentCourseContentAccess(
   if (!enrollment) {
     throw forbidden('Not enrolled in this content')
   }
+  if (enrollment.isBlocked) {
+    throw forbidden('Course access has been blocked by admin')
+  }
   if (await isEnrollmentPaymentBlocked(enrollment.id, enrollment.batchId)) {
     throw forbidden('Course access is blocked until this month\'s fee is paid')
   }
@@ -36,6 +39,7 @@ export async function isStudentCourseContentAccess(
 ): Promise<boolean> {
   const enrollment = await findActiveEnrollmentForCourse(studentId, courseId)
   if (!enrollment) return false
+  if (enrollment.isBlocked) return true
   if (await isEnrollmentPaymentBlocked(enrollment.id, enrollment.batchId)) {
     return false
   }

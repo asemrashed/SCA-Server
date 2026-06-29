@@ -4,8 +4,10 @@ import * as argon2 from 'argon2'
 import { randomBytes } from 'node:crypto'
 import { prisma } from '../../config/db.js'
 import { conflict, forbidden, notFound, validationError } from '../../lib/errors.js'
-import { BatchStatus, DeliveryMode, EnrollmentStatus, Role } from '../../shared/enums.js'
-import { createEnrollmentSchema, manualEnrollmentSchema, reviewEnrollmentSchema, type ListAdminEnrollmentsQuery } from '../../shared/schemas/enrollment.js'
+import { BatchStatus, DeliveryMode, EnrollmentStatus, MonthlyPaymentStatus, Role } from '../../shared/enums.js'
+import { ENROLLMENT_BILLING_MONTH, currentBillingMonth, DEFAULT_FIRST_MONTH_FEE_MINOR } from '../monthly-payment/monthly-payment.utils.js'
+import { createEnrollmentSchema, manualEnrollmentSchema, reviewEnrollmentSchema, type ListAdminEnrollmentsQuery, type SearchEnrollmentStudentsQuery } from '../../shared/schemas/enrollment.js'
+import { bdPhoneLookupVariants, normalizeBdPhone } from '../../shared/phone.js'
 import { loadSubjectsForBatchIds } from '../batch/batch.curriculum.service.js'
 import { getGrantedSourceBatchIds } from './enrollment.access.js'
 import { isEnrollmentPaymentBlocked } from '../monthly-payment/monthly-payment.utils.js'
@@ -97,7 +99,8 @@ export async function getMyEnrollment(
   if (row.status !== EnrollmentStatus.ACTIVE && row.status !== EnrollmentStatus.COMPLETED) {
     throw forbidden('Enrollment is not active')
   }
-  const isAccessBlocked = await isEnrollmentPaymentBlocked(row.id, row.batchId)
+  const isAccessBlocked =
+    row.isBlocked || (await isEnrollmentPaymentBlocked(row.id, row.batchId))
 
   const grantedBatchIds = row.batchId ? await getGrantedSourceBatchIds(row.batchId) : []
   const grantedSubjects =
@@ -292,6 +295,7 @@ export async function listAdminEnrollmentRequests(
 export async function reviewEnrollmentRequest(
   enrollmentId: string,
   input: ReviewEnrollmentInput,
+  adminId?: string,
 ): Promise<AdminEnrollmentRequestDto> {
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
@@ -300,11 +304,11 @@ export async function reviewEnrollmentRequest(
   if (!enrollment) {
     throw notFound('Enrollment not found')
   }
-  if (enrollment.status !== EnrollmentStatus.PENDING) {
-    throw validationError('Only pending enrollment requests can be reviewed')
-  }
 
   if (input.action === 'reject') {
+    if (enrollment.status !== EnrollmentStatus.PENDING) {
+      throw validationError('Only pending enrollment requests can be rejected')
+    }
     const updated = await prisma.enrollment.update({
       where: { id: enrollmentId },
       data: { status: EnrollmentStatus.CANCELLED },
@@ -313,23 +317,191 @@ export async function reviewEnrollmentRequest(
     return toAdminEnrollmentRequest(updated)
   }
 
-  const updated = await prisma.enrollment.update({
-    where: { id: enrollmentId },
-    data: {
-      status: EnrollmentStatus.ACTIVE,
-      rollNumber: input.rollNumber!,
+  if (input.action === 'approve') {
+    if (enrollment.status !== EnrollmentStatus.PENDING) {
+      throw validationError('Only pending enrollment requests can be approved')
+    }
+    const updated = await prisma.enrollment.update({
+      where: { id: enrollmentId },
+      data: {
+        status: EnrollmentStatus.ACTIVE,
+        rollNumber: input.rollNumber,
+      },
+      include: adminEnrollmentInclude,
+    })
+    if (input.enrollmentFeeMinor) {
+      await recordEnrollmentFee(
+        adminId ?? null,
+        updated.id,
+        updated.studentId,
+        input.enrollmentFeeMinor,
+      )
+    }
+    return toAdminEnrollmentRequest(updated)
+  }
+
+  if (input.action === 'remove') {
+    if (
+      enrollment.status !== EnrollmentStatus.ACTIVE &&
+      enrollment.status !== EnrollmentStatus.COMPLETED
+    ) {
+      throw validationError('Only active or completed enrollments can be removed')
+    }
+    const updated = await prisma.enrollment.update({
+      where: { id: enrollmentId },
+      data: { status: EnrollmentStatus.CANCELLED, isBlocked: false },
+      include: adminEnrollmentInclude,
+    })
+    return toAdminEnrollmentRequest(updated)
+  }
+
+  if (input.action === 'block') {
+    if (enrollment.status !== EnrollmentStatus.ACTIVE) {
+      throw validationError('Only active enrollments can be blocked')
+    }
+    const updated = await prisma.enrollment.update({
+      where: { id: enrollmentId },
+      data: { isBlocked: true },
+      include: adminEnrollmentInclude,
+    })
+    return toAdminEnrollmentRequest(updated)
+  }
+
+  if (input.action === 'unblock') {
+    if (enrollment.status !== EnrollmentStatus.ACTIVE) {
+      throw validationError('Only active enrollments can be unblocked')
+    }
+    const updated = await prisma.enrollment.update({
+      where: { id: enrollmentId },
+      data: { isBlocked: false },
+      include: adminEnrollmentInclude,
+    })
+    return toAdminEnrollmentRequest(updated)
+  }
+
+  throw validationError('Unsupported enrollment action')
+}
+
+async function recordEnrollmentFee(
+  adminId: string | null,
+  enrollmentId: string,
+  studentId: string,
+  amountMinor: number,
+): Promise<void> {
+  await prisma.monthlyPayment.upsert({
+    where: {
+      enrollmentId_billingMonth: {
+        enrollmentId,
+        billingMonth: ENROLLMENT_BILLING_MONTH,
+      },
     },
-    include: adminEnrollmentInclude,
+    create: {
+      enrollmentId,
+      studentId,
+      billingMonth: ENROLLMENT_BILLING_MONTH,
+      amountMinor,
+      status: MonthlyPaymentStatus.APPROVED,
+      reviewedAt: new Date(),
+      reviewedById: adminId,
+    },
+    update: {
+      amountMinor,
+      status: MonthlyPaymentStatus.APPROVED,
+      reviewedAt: new Date(),
+      reviewedById: adminId,
+    },
   })
-  return toAdminEnrollmentRequest(updated)
+}
+
+async function recordFirstMonthFee(
+  adminId: string | null,
+  enrollmentId: string,
+  studentId: string,
+  billingMonth: string,
+  amountMinor: number,
+): Promise<void> {
+  await prisma.monthlyPayment.upsert({
+    where: {
+      enrollmentId_billingMonth: { enrollmentId, billingMonth },
+    },
+    create: {
+      enrollmentId,
+      studentId,
+      billingMonth,
+      amountMinor,
+      status: MonthlyPaymentStatus.APPROVED,
+      reviewedAt: new Date(),
+      reviewedById: adminId,
+    },
+    update: {
+      amountMinor,
+      status: MonthlyPaymentStatus.APPROVED,
+      reviewedAt: new Date(),
+      reviewedById: adminId,
+    },
+  })
+}
+
+export interface EnrollmentStudentSearchResult {
+  id: string
+  name: string
+  phone: string
+  email: string | null
+}
+
+export async function searchStudentsForEnrollment(
+  query: SearchEnrollmentStudentsQuery,
+): Promise<EnrollmentStudentSearchResult[]> {
+  const term = query.search.trim()
+  const limit = query.limit
+  const phoneVariants = bdPhoneLookupVariants(term)
+
+  return prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      role: Role.STUDENT,
+      OR: [
+        { name: { contains: term, mode: 'insensitive' } },
+        { phone: { in: phoneVariants } },
+        { phone: { contains: term } },
+        { email: { contains: term, mode: 'insensitive' } },
+      ],
+    },
+    select: { id: true, name: true, phone: true, email: true },
+    take: limit,
+    orderBy: { name: 'asc' },
+  })
+}
+
+async function findStudentByPhone(phone: string) {
+  const variants = bdPhoneLookupVariants(phone)
+  return prisma.user.findFirst({
+    where: {
+      phone: { in: variants },
+      deletedAt: null,
+      role: Role.STUDENT,
+    },
+  })
 }
 
 async function findOrCreateStudentForManualEnrollment(
   input: ManualEnrollmentInput,
 ): Promise<string> {
-  const email = input.email?.trim() || null
+  if (input.studentId) {
+    const student = await prisma.user.findUnique({ where: { id: input.studentId } })
+    if (!student || student.deletedAt || !student.isActive) {
+      throw validationError('Student account is inactive')
+    }
+    if (student.role !== Role.STUDENT) {
+      throw validationError('Selected user is not a student')
+    }
+    return student.id
+  }
 
-  const existing = await prisma.user.findUnique({ where: { phone: input.phone } })
+  const email = input.email?.trim() || null
+  const phone = normalizeBdPhone(input.phone)
+
+  const existing = await findStudentByPhone(input.phone)
   if (existing) {
     if (existing.deletedAt || !existing.isActive) {
       throw validationError('Student account is inactive')
@@ -354,6 +526,10 @@ async function findOrCreateStudentForManualEnrollment(
       await prisma.user.update({ where: { id: existing.id }, data: updates })
     }
 
+    if (existing.phone !== phone) {
+      await prisma.user.update({ where: { id: existing.id }, data: { phone } })
+    }
+
     return existing.id
   }
 
@@ -370,7 +546,7 @@ async function findOrCreateStudentForManualEnrollment(
   const user = await prisma.user.create({
     data: {
       name: input.name,
-      phone: input.phone,
+      phone,
       email,
       passwordHash,
       role: Role.STUDENT,
@@ -382,6 +558,7 @@ async function findOrCreateStudentForManualEnrollment(
 
 export async function createManualEnrollment(
   input: ManualEnrollmentInput,
+  adminId?: string,
 ): Promise<AdminEnrollmentRequestDto> {
   const studentId = await findOrCreateStudentForManualEnrollment(input)
 
@@ -408,15 +585,26 @@ export async function createManualEnrollment(
       throw conflict('Student is already enrolled in this batch')
     }
 
+    const billingStartMonth = input.billingStartMonth!
+    const firstMonthFeeMinor = input.firstMonthFeeMinor ?? DEFAULT_FIRST_MONTH_FEE_MINOR
+
     const enrollment = await prisma.enrollment.create({
       data: {
         studentId,
         batchId: input.batchId,
         status: EnrollmentStatus.ACTIVE,
         rollNumber: input.rollNumber,
+        billingStartMonth,
       },
       include: adminEnrollmentInclude,
     })
+    await recordFirstMonthFee(
+      adminId ?? null,
+      enrollment.id,
+      studentId,
+      billingStartMonth,
+      firstMonthFeeMinor,
+    )
     return toAdminEnrollmentRequest(enrollment)
   }
 
@@ -451,5 +639,15 @@ export async function createManualEnrollment(
     },
     include: adminEnrollmentInclude,
   })
+
+  const enrollmentFeeMinor = input.enrollmentFeeMinor ?? (course.priceMinor > 0 ? course.priceMinor : undefined)
+  if (enrollmentFeeMinor) {
+    await recordEnrollmentFee(
+      adminId ?? null,
+      enrollment.id,
+      studentId,
+      enrollmentFeeMinor,
+    )
+  }
   return toAdminEnrollmentRequest(enrollment)
 }

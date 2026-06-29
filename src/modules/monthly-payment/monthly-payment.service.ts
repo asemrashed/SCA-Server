@@ -10,9 +10,11 @@ import {
 import type {
   ListMonthlyPaymentsQuery,
   ReviewMonthlyPaymentInput,
+  SetPaymentAccessInput,
 } from '../../shared/schemas/monthly-payment.js'
 import {
   currentBillingMonth,
+  ENROLLMENT_BILLING_MONTH,
   isEnrollmentPaymentBlocked,
   isPastPaymentDeadline,
   paymentDeadlineIso,
@@ -76,6 +78,7 @@ export interface UnpaidStudentDto {
   paymentDeadline: string
   isPastDeadline: boolean
   isAccessBlocked: boolean
+  hasAccessGrant: boolean
   student: MonthlyPaymentStudentDto
   enrollment: MonthlyPaymentEnrollmentDto
   currentMonthRequest: MonthlyPaymentDto | null
@@ -236,10 +239,22 @@ export async function getEnrollmentPaymentHistory(
     throw notFound('User not found')
   }
 
-  const [monthlyRows, currentRequest] = await Promise.all([
+  const [monthlyRows, enrollmentFeeRow, currentRequest] = await Promise.all([
     prisma.monthlyPayment.findMany({
-      where: { enrollmentId, status: MonthlyPaymentStatus.APPROVED },
+      where: {
+        enrollmentId,
+        status: MonthlyPaymentStatus.APPROVED,
+        billingMonth: { not: ENROLLMENT_BILLING_MONTH },
+      },
       orderBy: [{ billingMonth: 'desc' }, { reviewedAt: 'desc' }],
+    }),
+    prisma.monthlyPayment.findUnique({
+      where: {
+        enrollmentId_billingMonth: {
+          enrollmentId,
+          billingMonth: ENROLLMENT_BILLING_MONTH,
+        },
+      },
     }),
     prisma.monthlyPayment.findUnique({
       where: {
@@ -259,7 +274,20 @@ export async function getEnrollmentPaymentHistory(
       paidAt: row.reviewedAt?.toISOString() ?? null,
       createdAt: row.requestedAt.toISOString(),
     }))
-    .sort((a, b) => {
+
+  if (enrollmentFeeRow?.status === MonthlyPaymentStatus.APPROVED && enrollmentFeeRow.amountMinor) {
+    history.push({
+      id: enrollmentFeeRow.id,
+      type: 'ENROLLMENT',
+      billingMonth: null,
+      amountMinor: enrollmentFeeRow.amountMinor,
+      status: enrollmentFeeRow.status,
+      paidAt: enrollmentFeeRow.reviewedAt?.toISOString() ?? null,
+      createdAt: enrollmentFeeRow.requestedAt.toISOString(),
+    })
+  }
+
+  history.sort((a, b) => {
       const aTime = new Date(a.paidAt ?? a.createdAt).getTime()
       const bTime = new Date(b.paidAt ?? b.createdAt).getTime()
       return bTime - aTime
@@ -568,10 +596,19 @@ export async function listUnpaidStudents(
     currentRequests.map((row) => [row.enrollmentId, row]),
   )
 
+  const accessGrants = enrollmentIds.length
+    ? await prisma.monthlyPaymentAccessGrant.findMany({
+        where: { enrollmentId: { in: enrollmentIds }, billingMonth },
+        select: { enrollmentId: true },
+      })
+    : []
+  const grantedEnrollmentIds = new Set(accessGrants.map((row) => row.enrollmentId))
+
   const data: UnpaidStudentDto[] = await Promise.all(
     enrollments.map(async (row) => {
       const enrollmentDto = toEnrollmentDto(row)
       const currentRequest = requestByEnrollmentId.get(row.id)
+      const hasAccessGrant = grantedEnrollmentIds.has(row.id)
       const isAccessBlocked = await isEnrollmentPaymentBlocked(row.id, row.batchId)
 
       return {
@@ -579,6 +616,7 @@ export async function listUnpaidStudents(
         paymentDeadline: deadline,
         isPastDeadline: pastDeadline,
         isAccessBlocked,
+        hasAccessGrant,
         student: {
           id: row.student.id,
           name: row.student.name,
@@ -594,5 +632,63 @@ export async function listUnpaidStudents(
   return {
     data,
     meta: { total, page: query.page, pageSize: query.pageSize },
+  }
+}
+
+export interface PaymentAccessResultDto {
+  enrollmentId: string
+  billingMonth: string
+  hasAccessGrant: boolean
+  isAccessBlocked: boolean
+}
+
+export async function setEnrollmentPaymentAccess(
+  adminId: string,
+  enrollmentId: string,
+  input: SetPaymentAccessInput,
+): Promise<PaymentAccessResultDto> {
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id: enrollmentId },
+    select: { id: true, batchId: true },
+  })
+  if (!enrollment) {
+    throw notFound('Enrollment not found')
+  }
+  if (!enrollment.batchId) {
+    throw validationError('Payment access overrides apply only to batch enrollments')
+  }
+
+  if (input.action === 'grant') {
+    await prisma.monthlyPaymentAccessGrant.upsert({
+      where: {
+        enrollmentId_billingMonth: {
+          enrollmentId,
+          billingMonth: input.billingMonth,
+        },
+      },
+      create: {
+        enrollmentId,
+        billingMonth: input.billingMonth,
+        grantedById: adminId,
+      },
+      update: {
+        grantedById: adminId,
+        grantedAt: new Date(),
+      },
+    })
+  } else {
+    await prisma.monthlyPaymentAccessGrant.deleteMany({
+      where: { enrollmentId, billingMonth: input.billingMonth },
+    })
+  }
+
+  const hasAccessGrant = input.action === 'grant'
+  const isAccessBlocked = await isEnrollmentPaymentBlocked(enrollmentId, enrollment.batchId)
+
+  return {
+    enrollmentId,
+    billingMonth: input.billingMonth,
+    hasAccessGrant,
+    isAccessBlocked,
   }
 }

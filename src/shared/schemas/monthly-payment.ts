@@ -22,5 +22,11 @@ export const listMonthlyPaymentsQuerySchema = z.object({
   pageSize: z.coerce.number().int().positive().max(100).default(20),
 })
 
+export const setPaymentAccessSchema = z.object({
+  billingMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  action: z.enum(['grant', 'revoke']),
+})
+
 export type ReviewMonthlyPaymentInput = z.infer<typeof reviewMonthlyPaymentSchema>
 export type ListMonthlyPaymentsQuery = z.infer<typeof listMonthlyPaymentsQuerySchema>
+export type SetPaymentAccessInput = z.infer<typeof setPaymentAccessSchema>

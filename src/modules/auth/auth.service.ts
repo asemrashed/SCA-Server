@@ -15,6 +15,7 @@ import type {
 } from '../../shared/schemas/auth.js'
 import type { AuthTokensResponse, User } from '../../shared/types/index.js'
 import { toPublicUser } from './auth.mapper.js'
+import { debugAgentLog } from '../../lib/debug-agent-log.js'
 
 export interface AuthSession {
   user: User
@@ -82,6 +83,15 @@ export async function login(input: LoginInput): Promise<AuthSession> {
   if (!valid) {
     throw unauthorized('Invalid phone or password')
   }
+
+  // #region agent log
+  debugAgentLog(
+    'auth.service.ts:login',
+    'login success',
+    { userId: user.id, role: user.role, isActive: user.isActive },
+    'D',
+  )
+  // #endregion
 
   return issueSession(user)
 }

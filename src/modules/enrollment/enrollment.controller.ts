@@ -70,6 +70,7 @@ export async function reviewRequest(
     const data = await enrollmentService.reviewEnrollmentRequest(
       param(req.params.id),
       req.body,
+      req.auth!.userId,
     )
     res.json({ data })
   } catch (err) {
@@ -83,8 +84,24 @@ export async function createManual(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const data = await enrollmentService.createManualEnrollment(req.body)
+    const data = await enrollmentService.createManualEnrollment(
+      req.body,
+      req.auth!.userId,
+    )
     res.status(201).json({ data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function searchStudents(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const data = await enrollmentService.searchStudentsForEnrollment(req.query as never)
+    res.json({ data })
   } catch (err) {
     next(err)
   }
