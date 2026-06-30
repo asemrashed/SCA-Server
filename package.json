@@ -13,7 +13,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:migrate:v3-data": "tsx prisma/scripts/migrate-v3-data.ts",
+    "db:migrate:cloudinary-to-local": "tsx prisma/scripts/migrate-cloudinary-to-local.ts",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts"
   },
@@ -23,7 +23,6 @@
   "dependencies": {
     "@prisma/client": "^6.9.0",
     "argon2": "^0.44.0",
-    "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",

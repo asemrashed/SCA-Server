@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { z } from 'zod'
 
 const envSchema = z.object({
@@ -10,9 +11,13 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   CORS_ORIGIN: z.string().min(1),
   ADMIN_WHATSAPP_PHONE: z.string().min(10).optional(),
-  CLOUDINARY_CLOUD_NAME: z.string().default('mock_cloud_name'),
-  CLOUDINARY_API_KEY: z.string().default('mock_api_key'),
-  CLOUDINARY_API_SECRET: z.string().default('mock_api_secret'),
+  /** Absolute or relative path where uploaded files are stored on disk. */
+  UPLOAD_DIR: z.string().default('./uploads'),
+  /**
+   * Public base URL for uploaded files (no trailing slash).
+   * e.g. https://api.sharifcommerceacademy.com/uploads
+   */
+  PUBLIC_UPLOAD_BASE_URL: z.string().url().optional(),
 })
 
 export type Env = z.infer<typeof envSchema>
@@ -23,7 +28,11 @@ function loadEnv(): Env {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
     throw new Error(`Invalid environment: ${issues}`)
   }
-  return parsed.data
+  const data = parsed.data
+  if (data.NODE_ENV === 'production' && !data.PUBLIC_UPLOAD_BASE_URL) {
+    throw new Error('Invalid environment: PUBLIC_UPLOAD_BASE_URL is required in production')
+  }
+  return data
 }
 
 export const env = loadEnv()
@@ -35,15 +44,19 @@ export function corsOrigins(): string[] {
     .filter(Boolean)
 }
 
-const MOCK_CLOUDINARY_VALUES = new Set(['mock_cloud_name', 'mock_api_key', 'mock_api_secret'])
+/** Resolved absolute directory for file uploads. */
+export function uploadDir(): string {
+  return path.isAbsolute(env.UPLOAD_DIR)
+    ? env.UPLOAD_DIR
+    : path.resolve(process.cwd(), env.UPLOAD_DIR)
+}
 
-/** True when real Cloudinary credentials are set (not placeholder mock values). */
-export function isCloudinaryConfigured(): boolean {
-  return (
-    !MOCK_CLOUDINARY_VALUES.has(env.CLOUDINARY_CLOUD_NAME) &&
-    !MOCK_CLOUDINARY_VALUES.has(env.CLOUDINARY_API_KEY) &&
-    !MOCK_CLOUDINARY_VALUES.has(env.CLOUDINARY_API_SECRET)
-  )
+/** Base URL returned in upload API responses (no trailing slash). */
+export function publicUploadBaseUrl(): string {
+  if (env.PUBLIC_UPLOAD_BASE_URL) {
+    return env.PUBLIC_UPLOAD_BASE_URL.replace(/\/$/, '')
+  }
+  return `http://localhost:${env.PORT}/uploads`
 }
 
 /** Admin WhatsApp number for manual monthly fee requests (digits only, BD format). */

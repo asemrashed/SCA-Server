@@ -6,7 +6,7 @@ import cookieParser from 'cookie-parser'
 
 const require = createRequire(import.meta.url)
 const helmet = require('helmet') as () => RequestHandler
-import { env, corsOrigins } from './config/env.js'
+import { env, corsOrigins, uploadDir } from './config/env.js'
 import { errorHandler } from './middleware/error.js'
 import { authRouter } from './modules/auth/auth.routes.js'
 import { batchRouter } from './modules/batch/batch.routes.js'
@@ -59,6 +59,17 @@ export function createApp() {
   )
   app.use(express.json())
   app.use(cookieParser())
+
+  app.use(
+    '/uploads',
+    express.static(uploadDir(), {
+      maxAge: env.NODE_ENV === 'production' ? '7d' : 0,
+      setHeaders(res) {
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+        res.setHeader('Cache-Control', 'public, max-age=604800')
+      },
+    }),
+  )
 
   const api = express.Router()
 

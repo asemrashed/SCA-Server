@@ -1,5 +1,6 @@
-import { v2 as cloudinary } from 'cloudinary'
-import { env, isCloudinaryConfigured } from '../config/env.js'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { publicUploadBaseUrl, uploadDir } from '../config/env.js'
 
 export interface StorageUploadResult {
   url: string
@@ -12,79 +13,78 @@ export interface StorageClient {
   getSignedUrl(key: string, expiresInSeconds?: number): Promise<string>
 }
 
-class StubStorage implements StorageClient {
-  async upload(key: string, _data: Buffer, _contentType: string): Promise<StorageUploadResult> {
-    const url = `https://res.cloudinary.com/mock/image/upload/v1/sca/${key}`
-    console.info('[storage:stub] upload', key, '— set real CLOUDINARY_* env vars to enable uploads')
-    return { url, key: `sca/${key}` }
+class LocalStorage implements StorageClient {
+  private readonly root: string
+  private readonly baseUrl: string
+
+  constructor(root: string, baseUrl: string) {
+    this.root = root
+    this.baseUrl = baseUrl.replace(/\/$/, '')
+  }
+
+  private filePath(key: string): string {
+    const normalized = key.replace(/^\/+/, '').replace(/\.\./g, '')
+    return path.join(this.root, normalized)
+  }
+
+  private publicUrl(key: string): string {
+    const normalized = key.replace(/^\/+/, '')
+    return `${this.baseUrl}/${normalized.split('/').map(encodeURIComponent).join('/')}`
+  }
+
+  async upload(key: string, data: Buffer, _contentType: string): Promise<StorageUploadResult> {
+    const filePath = this.filePath(key)
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, data)
+    return { url: this.publicUrl(key), key }
   }
 
   async delete(key: string): Promise<void> {
-    console.info('[storage:stub] delete', key)
+    try {
+      await fs.unlink(this.filePath(key))
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+    }
   }
 
-  async getSignedUrl(key: string): Promise<string> {
-    return `https://res.cloudinary.com/mock/image/upload/v1/sca/${key}`
-  }
-}
-
-class CloudinaryStorage implements StorageClient {
-  constructor() {
-    cloudinary.config({
-      cloud_name: env.CLOUDINARY_CLOUD_NAME,
-      api_key: env.CLOUDINARY_API_KEY,
-      api_secret: env.CLOUDINARY_API_SECRET,
-      secure: true,
-    })
-  }
-
-  async upload(folder: string, data: Buffer, contentType: string): Promise<StorageUploadResult> {
-    const resourceType = contentType.startsWith('video/')
-      ? 'video'
-      : contentType === 'application/pdf'
-        ? 'raw'
-        : 'auto'
-
-    return new Promise((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        {
-          folder: `sca/${folder}`,
-          resource_type: resourceType,
-        },
-        (err, result) => {
-          if (err || !result) {
-            reject(err ?? new Error('Cloudinary upload failed'))
-            return
-          }
-          resolve({
-            url: result.secure_url,
-            key: result.public_id,
-          })
-        },
-      )
-      stream.end(data)
-    })
-  }
-
-  async delete(key: string): Promise<void> {
-    await cloudinary.uploader.destroy(key, { resource_type: 'auto' })
-  }
-
-  async getSignedUrl(key: string, expiresInSeconds = 3600): Promise<string> {
-    return cloudinary.url(key, {
-      sign_url: true,
-      type: 'authenticated',
-      secure: true,
-      expires_at: Math.floor(Date.now() / 1000) + expiresInSeconds,
-    })
+  async getSignedUrl(key: string, _expiresInSeconds = 3600): Promise<string> {
+    return this.publicUrl(key)
   }
 }
 
-function createStorage(): StorageClient {
-  if (isCloudinaryConfigured()) {
-    return new CloudinaryStorage()
-  }
-  return new StubStorage()
+export const storage: StorageClient = new LocalStorage(uploadDir(), publicUploadBaseUrl())
+
+/** Save a buffer to disk and return its public URL (used by migration scripts). */
+export async function saveLocalFile(key: string, data: Buffer): Promise<StorageUploadResult> {
+  return storage.upload(key, data, 'application/octet-stream')
 }
 
-export const storage: StorageClient = createStorage()
+/** True when a URL points at this server's upload storage. */
+export function isLocalUploadUrl(url: string): boolean {
+  try {
+    const base = new URL(publicUploadBaseUrl())
+    const target = new URL(url)
+    return target.origin === base.origin && target.pathname.startsWith(`${base.pathname}/`)
+  } catch {
+    return false
+  }
+}
+
+/** Map a Cloudinary URL to the local storage key used under UPLOAD_DIR. */
+export function localKeyFromCloudinaryUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    if (!parsed.hostname.includes('res.cloudinary.com')) return null
+
+    const match = parsed.pathname.match(/\/(?:image|video|raw)\/upload\/(?:v\d+\/)?(.+)/)
+    if (!match) return null
+
+    let storagePath = decodeURIComponent(match[1])
+    if (storagePath.startsWith('sca/')) {
+      storagePath = storagePath.slice(4)
+    }
+    return storagePath
+  } catch {
+    return null
+  }
+}
