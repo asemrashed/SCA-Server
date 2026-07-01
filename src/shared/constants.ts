@@ -14,4 +14,7 @@ export function formatBDT(minor: number): string {
 
 export const DEFAULT_PAGE_SIZE = 20
 
+/** Max multipart upload size (1 GiB). Keep in sync with nginx client_max_body_size. */
+export const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
+
 export const ROLE_LIST = ['STUDENT', 'ADMIN', 'SUPER_ADMIN'] as const

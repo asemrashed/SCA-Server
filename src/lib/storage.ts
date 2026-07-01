@@ -54,6 +54,19 @@ class LocalStorage implements StorageClient {
 
 export const storage: StorageClient = new LocalStorage(uploadDir(), publicUploadBaseUrl())
 
+/** Public URL for a storage key under UPLOAD_DIR. */
+export function publicUrlForKey(key: string): string {
+  const normalized = key.replace(/^\/+/, '').replace(/\.\./g, '')
+  const base = publicUploadBaseUrl()
+  return `${base}/${normalized.split('/').map(encodeURIComponent).join('/')}`
+}
+
+/** Absolute path for a storage key. */
+export function absolutePathForKey(key: string): string {
+  const normalized = key.replace(/^\/+/, '').replace(/\.\./g, '')
+  return path.join(uploadDir(), normalized)
+}
+
 /** Save a buffer to disk and return its public URL (used by migration scripts). */
 export async function saveLocalFile(key: string, data: Buffer): Promise<StorageUploadResult> {
   return storage.upload(key, data, 'application/octet-stream')
